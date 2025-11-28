@@ -10,6 +10,7 @@ import 'package:juecho/features/home/presentation/widgets/general/general_scaffo
 import 'package:juecho/features/home/presentation/widgets/general/general_stats_row.dart';
 import 'package:juecho/common/widgets/primary_button.dart';
 import 'package:juecho/common/constants/service_categories.dart';
+import 'package:juecho/features/home/presentation/widgets/welcome_section.dart';
 
 class GeneralHomePage extends StatefulWidget {
   const GeneralHomePage({super.key});
@@ -57,7 +58,7 @@ class _GeneralHomePageState extends State<GeneralHomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _WelcomeSection(name: _fullName,),
+                  WelcomeSection(name: _fullName,),
                   const SizedBox(height: 8),
                   const Text(
                     'Here is your activity summary',
@@ -145,28 +146,6 @@ class _GeneralHomePageState extends State<GeneralHomePage> {
                 ],
               ),
             ),
-    );
-  }
-}
-
-class _WelcomeSection extends StatelessWidget {
-  final String name;
-  const _WelcomeSection({required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        Text(
-          'Welcome $name',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
     );
   }
 }
