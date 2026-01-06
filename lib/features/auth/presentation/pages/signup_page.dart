@@ -1,10 +1,14 @@
-import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
+import 'package:amplify_auth_cognito/amplify_auth_cognito.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
-import 'package:juecho/common/helper/validators.dart';
+import 'package:provider/provider.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
-import 'package:juecho/features/auth/data/auth_repository.dart';
-import 'package:juecho/features/auth/presentation/pages/confirm_code_page.dart';
+import 'package:juecho/common/helper/validators.dart';
 import 'package:juecho/common/widgets/error_message.dart';
+import 'package:juecho/features/auth/presentation/widgets/responsive_scaffold.dart';
+
+import 'package:juecho/features/auth/presentation/pages/confirm_code_page.dart';
+import 'package:juecho/features/auth/presentation/provider/auth_provider.dart';
 import 'package:juecho/features/auth/presentation/widgets/auth_logo_header.dart';
 
 /// Screen that handles registration of a new "general" user.
@@ -12,9 +16,18 @@ import 'package:juecho/features/auth/presentation/widgets/auth_logo_header.dart'
 /// Responsibilities:
 /// - Collect first name, last name, JU email, and password.
 /// - Validate all fields locally.
-/// - Call [AuthRepository.signUpGeneral] to create the Cognito user and
-///   store a PendingUser row with the user's names.
-/// - Navigate to [ConfirmCodePage] so the user can confirm their email.
+/// - Call AuthProvider.signUpGeneral() to:
+///   - create Cognito user
+///   - create PendingUser record
+/// - Navigate to ConfirmCodePage on success.
+///
+/// Responsive behavior:
+/// - Constrains width (maxWidth: 520) for tablet/web readability.
+/// - Uses a 2-column layout for First/Last name on wider screens (>= 600px).
+///
+/// Note:
+/// - Only layout changed to responsive.
+/// - Signup logic and provider calls are untouched.
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
 
@@ -26,32 +39,21 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
-  /// Default corner radius used for text fields and buttons.
   static const double radius = 8;
 
-  /// Form key used to validate all sign-up inputs.
   final _formKey = GlobalKey<FormState>();
 
-  /// Text controllers for each input.
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
 
-  /// Indicates whether the sign-up process is in progress.
-  ///
-  /// Used to:
-  /// - disable the "Sign up" button
-  /// - show a loading spinner instead of the button label
   bool _isLoading = false;
-
-  /// Holds any error message to show above the form.
   String? _error;
 
   @override
   void dispose() {
-    // Dispose controllers to prevent memory leaks.
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
     _emailCtrl.dispose();
@@ -60,18 +62,13 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
-  /// Main handler for the "Sign up" button.
+  /// Primary sign-up handler.
   ///
   /// Flow:
-  /// 1. Validate all form inputs.
-  /// 2. Call [AuthRepository.signUpGeneral] to:
-  ///    - create Cognito user
-  ///    - create PendingUser in Dynamo
-  /// 3. On success, navigate to [ConfirmCodePage] with all needed arguments.
-  /// 4. On [AuthException], map specific issues (username exists, weak password)
-  ///    to clear, user-friendly messages.
+  /// 1) Validate form
+  /// 2) AuthProvider.signUpGeneral()
+  /// 3) Navigate to ConfirmCodePage with required args
   Future<void> _onSignup() async {
-    // 1) Run all validators defined in the Form.
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() {
@@ -79,15 +76,13 @@ class _SignupPageState extends State<SignupPage> {
       _error = null;
     });
 
-    // 2) Capture trimmed values from text controllers.
     final firstName = _firstNameCtrl.text.trim();
     final lastName = _lastNameCtrl.text.trim();
     final email = _emailCtrl.text.trim();
     final password = _passwordCtrl.text.trim();
 
     try {
-      // 3) Call repository to sign up in Cognito + create PendingUser.
-      await AuthRepository.signUpGeneral(
+      await context.read<AuthProvider>().signUpGeneral(
         email: email,
         password: password,
         firstName: firstName,
@@ -96,7 +91,6 @@ class _SignupPageState extends State<SignupPage> {
 
       if (!mounted) return;
 
-      // 4) Navigate to ConfirmCodePage so user can enter verification code.
       Navigator.pushNamed(
         context,
         ConfirmCodePage.routeName,
@@ -108,7 +102,6 @@ class _SignupPageState extends State<SignupPage> {
         ),
       );
     } on AuthException catch (e) {
-      // Map common auth exceptions to friendly error copy.
       String message;
 
       if (e is UsernameExistsException) {
@@ -120,204 +113,210 @@ class _SignupPageState extends State<SignupPage> {
         'Password does not meet policy.\nIt must be at least 8 characters '
             'and include uppercase, lowercase, number and symbol.';
       } else {
-        // Fallback to the message provided by the SDK.
         message = e.message;
       }
 
       setState(() => _error = message);
-    } catch (e) {
-      // Any other unexpected error.
+    } catch (_) {
       setState(() => _error = 'Sign up failed. Please try again later.');
     } finally {
-      if (mounted) {
-        // Ensure loading state always resets.
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// Navigates back to the login screen.
-  ///
-  /// Uses [Navigator.pop] because login is expected to be the previous page.
+  /// Navigate back to login page (previous route).
   void _onGoToLogin() => Navigator.pop(context);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+    // Screen-based breakpoint (NOT affected by maxWidth constraints).
+    final screenW = MediaQuery.of(context).size.width;
+    final twoColumn = screenW >= 600;
+
+    return ResponsiveScaffold(
+      maxWidth: 520,
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const AuthLogoHeader(
+            title: 'Sign up',
+            spacingBelowLogo: 32,
+            spacingBelowTitle: 24,
+          ),
+
+          ErrorMessage(error: _error),
+
+          Form(
+            key: _formKey,
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                /// Reusable header widget to show logo + title.
-                const AuthLogoHeader(
-                  title: 'Sign up',
-                  spacingBelowLogo: 32,
-                  spacingBelowTitle: 24,
-                ),
-
-                // Shows error message (if any) in red text.
-                ErrorMessage(error: _error),
-
-                /// The main sign-up form (first name, last name, email, passwords).
-                Form(
-                  key: _formKey,
-                  child: Column(
+                // First + Last name in one row on wider screens
+                if (twoColumn)
+                  Row(
                     children: [
-                      TextFormField(
-                        controller: _firstNameCtrl,
-                        textInputAction: TextInputAction.next,
-                        decoration: _inputDecoration('First Name'),
-                        validator: (value) {
-                          if ((value ?? '').trim().isEmpty) {
-                            return 'Please enter your first name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _lastNameCtrl,
-                        textInputAction: TextInputAction.next,
-                        decoration: _inputDecoration('Last Name'),
-                        validator: (value) {
-                          if ((value ?? '').trim().isEmpty) {
-                            return 'Please enter your last name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _emailCtrl,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        decoration: _inputDecoration(
-                          'Enter your University Email',
-                        ),
-                        validator: validateJUEmail,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _passwordCtrl,
-                        obscureText: true,
-                        textInputAction: TextInputAction.next,
-                        decoration: _inputDecoration('Enter your password'),
-                        validator: (value) {
-                          if ((value ?? '').isEmpty) {
-                            return 'Please enter a password';
-                          }
-                          if (value!.length < 8) {
-                            return 'Password should be at least 8 characters';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _confirmPasswordCtrl,
-                        obscureText: true,
-                        textInputAction: TextInputAction.done,
-                        decoration:
-                        _inputDecoration('Confirm your password'),
-                        validator: (value) {
-                          if ((value ?? '').isEmpty) {
-                            return 'Please confirm your password';
-                          }
-                          if (value != _passwordCtrl.text) {
-                            return 'Passwords do not match';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 24),
-
-                      // "Sign up" button with loading state
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _onSignup,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                            AppColors.primary,
-                            foregroundColor: AppColors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(radius),
-                            ),
-                            textStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.white,
-                            ),
-                          )
-                              : const Text('Sign up'),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _firstNameCtrl,
+                          textInputAction: TextInputAction.next,
+                          decoration: _inputDecoration('First Name'),
+                          validator: (value) {
+                            if ((value ?? '').trim().isEmpty) {
+                              return 'Please enter your first name';
+                            }
+                            return null;
+                          },
                         ),
                       ),
-                      const SizedBox(height: 12),
-
-                      // "Already have an account? Sign in" row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            "Already have an account?",
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.darkText,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: _onGoToLogin,
-                            child: Text(
-                              " Sign in",
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color:
-                                AppColors.primary,
-                              ),
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _lastNameCtrl,
+                          textInputAction: TextInputAction.next,
+                          decoration: _inputDecoration('Last Name'),
+                          validator: (value) {
+                            if ((value ?? '').trim().isEmpty) {
+                              return 'Please enter your last name';
+                            }
+                            return null;
+                          },
+                        ),
                       ),
                     ],
+                  )
+                else ...[
+                  TextFormField(
+                    controller: _firstNameCtrl,
+                    textInputAction: TextInputAction.next,
+                    decoration: _inputDecoration('First Name'),
+                    validator: (value) {
+                      if ((value ?? '').trim().isEmpty) {
+                        return 'Please enter your first name';
+                      }
+                      return null;
+                    },
                   ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _lastNameCtrl,
+                    textInputAction: TextInputAction.next,
+                    decoration: _inputDecoration('Last Name'),
+                    validator: (value) {
+                      if ((value ?? '').trim().isEmpty) {
+                        return 'Please enter your last name';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  decoration: _inputDecoration('Enter your University Email'),
+                  validator: validateJUEmail,
+                ),
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller: _passwordCtrl,
+                  obscureText: true,
+                  textInputAction: TextInputAction.next,
+                  decoration: _inputDecoration('Enter your password'),
+                  validator: (value) {
+                    if ((value ?? '').isEmpty) return 'Please enter a password';
+                    if (value!.length < 8) return 'Password should be at least 8 characters';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller: _confirmPasswordCtrl,
+                  obscureText: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: _inputDecoration('Confirm your password'),
+                  validator: (value) {
+                    if ((value ?? '').isEmpty) return 'Please confirm your password';
+                    if (value != _passwordCtrl.text) return 'Passwords do not match';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _onSignup,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(radius),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.white,
+                      ),
+                    )
+                        : const Text('Sign up'),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      "Already have an account?",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.darkText,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _onGoToLogin,
+                      child: const Text(
+                        " Sign in",
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  /// Reusable InputDecoration builder for all fields on the sign-up page.
+  /// Reusable input decoration builder.
   InputDecoration _inputDecoration(String label) => InputDecoration(
     labelText: label,
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radius),
-    ),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(radius)),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(radius),
-      borderSide: BorderSide(
-        color: AppColors.primary,
-        width: 1.7,
-      ),
+      borderSide: const BorderSide(color: AppColors.primary, width: 1.7),
     ),
-    contentPadding:
-    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
   );
 }

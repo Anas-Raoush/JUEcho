@@ -9,6 +9,7 @@ class ChangePasswordDialog extends StatefulWidget {
   @override
   State<ChangePasswordDialog> createState() => _ChangePasswordDialogState();
 }
+
 class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   final _formKey = GlobalKey<FormState>();
   final _oldCtrl = TextEditingController();
@@ -35,6 +36,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   }
 
   Future<void> _submit() async {
+    // Validate first
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
     setState(() {
       _isSubmitting = true;
       _error = null;
@@ -59,9 +63,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
         ),
       );
     } on AuthNotAuthorizedException {
-      setState(() {
-        _error = 'Your current password is incorrect.';
-      });
+      setState(() => _error = 'Your current password is incorrect.');
     } on InvalidPasswordException {
       setState(() {
         _error =
@@ -69,121 +71,170 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
             'a lowercase letter, a number, and a special character.';
       });
     } on LimitExceededException {
-      setState(() {
-        _error = 'Too many attempts. Please wait a little while and try again.';
-      });
+      setState(() => _error = 'Too many attempts. Please wait a little while and try again.');
     } catch (_) {
-      setState(() {
-        _error = 'Could not change password. Please try again later.';
-      });
+      setState(() => _error = 'Could not change password. Please try again later.');
     } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final w = size.width;
+    final h = size.height;
 
-    return AlertDialog(
+    // Responsive dialog width
+    final dialogWidth = w < 420 ? w - 32 : 420.0;
+
+    // Responsive height (so it won't overflow)
+    final dialogMaxHeight = h < 700 ? h * 0.90 : 560.0;
+
+    final isVerySmall = dialogWidth < 340;
+
+    return Dialog(
       backgroundColor: AppColors.white,
-      alignment: Alignment.center,
-      constraints: const BoxConstraints(maxWidth: 420),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      title: Center(
-        child: const Text(
-          'Change Your password',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: dialogWidth,
+          maxHeight: dialogMaxHeight,
         ),
-      ),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_error != null) ...[
-              Text(
-                _error!,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Change Your password',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.red, fontSize: 12),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+
+               SingleChildScrollView(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        if (_error != null) ...[
+                          Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: AppColors.red, fontSize: 12),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        _passwordField(
+                          controller: _oldCtrl,
+                          label: 'Enter your old password',
+                          validator: (v) {
+                            if ((v ?? '').isEmpty) return 'Please enter your old password';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        _passwordField(
+                          controller: _newCtrl,
+                          label: 'Enter your new password',
+                          validator: (v) {
+                            final value = (v ?? '').trim();
+                            if (value.isEmpty) return 'Please enter a new password';
+                            if (!_isStrongPassword(value)) return 'Weak password';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        _passwordField(
+                          controller: _confirmCtrl,
+                          label: 'Confirm your new password',
+                          validator: (v) {
+                            final value = (v ?? '').trim();
+                            if (value.isEmpty) return 'Please confirm your new password';
+                            if (value != _newCtrl.text) return 'Passwords do not match';
+                            return null;
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+
+              const SizedBox(height: 12),
+
+              // Buttons INSIDE content
+              if (isVerySmall) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSubmitting ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.white,
+                      ),
+                    )
+                        : const Text('Change'),
+                  ),
+                ),
+              ] else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: _isSubmitting
+                            ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.white,
+                          ),
+                        )
+                            : const Text('Change'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
-            _passwordField(
-              controller: _oldCtrl,
-              label: 'Enter your old password',
-              validator: (v) {
-                if ((v ?? '').isEmpty) {
-                  return 'Please enter your old password';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-            _passwordField(
-              controller: _newCtrl,
-              label: 'Enter your new password',
-              validator: (v) {
-                final value = v ?? '';
-                if (value.isEmpty) {
-                  return 'Please enter a new password';
-                }
-                if (!_isStrongPassword(value)) {
-                  return 'Weak password';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-            _passwordField(
-              controller: _confirmCtrl,
-              label: 'Confirm your new password',
-              validator: (v) {
-                final value = v ?? '';
-                if (value.isEmpty) {
-                  return 'Please confirm your new password';
-                }
-                if (value != _newCtrl.text) {
-                  return 'Passwords do not match';
-                }
-                return null;
-              },
-            ),
-          ],
+          ),
         ),
       ),
-      actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      actions: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-        TextButton(
-          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: _isSubmitting ? null : _submit,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: AppColors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: _isSubmitting
-              ? const SizedBox(
-            height: 16,
-            width: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.white,
-            ),
-          )
-              : const Text('Change'),
-        ),],),
-      ],
     );
   }
 
@@ -199,10 +250,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
       decoration: InputDecoration(
         labelText: label,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
     );
   }

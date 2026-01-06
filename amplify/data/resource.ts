@@ -211,7 +211,7 @@ const schema = a.schema({
       allow.ownerDefinedIn("ownerId").to(["read", "create", "update", "delete"]),
 
       // Admins: full access to manage any submission
-      allow.group("admin"),
+      allow.group("admin").to(["read", "create", "update", "delete"]),
     ]),
 
   /**
@@ -243,13 +243,15 @@ const schema = a.schema({
     })
     .identifier(["id"])
     .authorization((allow) => [
-      // User can see their own notifications
-      allow.ownerDefinedIn("recipientId"),
+      // user can read/update/delete their own notifications
+      allow.ownerDefinedIn("recipientId").to(["read", "update", "delete"]),
 
-      // Admins may read all notifications (for analytics / debugging)
-      allow.group("admin").to(["read"]),
-    ]),
-});
+      // any signed-in user can create (needed for user->admin notifications)
+      allow.authenticated().to(["create"]),
+
+      // admins can do everything (needed for admin->user notifications + moderation)
+      allow.groups(["admin"]).to(["create", "read", "update", "delete"]),
+      ])})
 
 // Types for generated data client
 export type Schema = ClientSchema<typeof schema>;

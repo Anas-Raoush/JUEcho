@@ -1,18 +1,25 @@
-import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
 
 import 'package:juecho/common/widgets/juecho_header.dart';
-import 'package:juecho/features/auth/data/auth_repository.dart';
-import 'package:juecho/features/auth/presentation/pages/login_page.dart';
-import 'package:juecho/features/home/presentation/pages/admin_home_page.dart';
 import 'package:juecho/features/home/presentation/widgets/admin/admin_hamburger_menu.dart';
 
+/// A reusable scaffold wrapper for all ADMIN pages.
+///
+/// What it provides:
+/// - Standard page padding
+/// - The app header (JuechoHeader)
+/// - A slide-down hamburger overlay menu (AdminHamburgerMenu)
+///
+/// Why it exists:
+/// - Keeps every admin page consistent
+/// - Prevents copying the same header/menu animation code everywhere
 class AdminScaffoldWithMenu extends StatefulWidget {
   const AdminScaffoldWithMenu({
     super.key,
     required this.body,
   });
 
+  /// The page content below the header.
   final Widget body;
 
   @override
@@ -21,19 +28,24 @@ class AdminScaffoldWithMenu extends StatefulWidget {
 
 class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
     with SingleTickerProviderStateMixin {
+  /// Controls opening/closing the top overlay menu animation.
   late final AnimationController _menuController;
+
+  /// Moves the menu from off-screen (top) into view.
   late final Animation<Offset> _menuSlide;
 
   @override
   void initState() {
     super.initState();
+
     _menuController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 260),
     );
+
     _menuSlide = Tween<Offset>(
-      begin: const Offset(0, -1),
-      end: const Offset(0, 0),
+      begin: const Offset(0, -1), // off-screen
+      end: const Offset(0, 0),    // in-place
     ).animate(
       CurvedAnimation(
         parent: _menuController,
@@ -48,28 +60,16 @@ class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
     super.dispose();
   }
 
+  /// Toggles the menu open/close.
   void _toggleMenu() {
-    if (_menuController.status == AnimationStatus.completed ||
-        _menuController.status == AnimationStatus.forward) {
+    final isOpen = _menuController.status == AnimationStatus.completed ||
+        _menuController.status == AnimationStatus.forward;
+
+    if (isOpen) {
       _menuController.reverse();
     } else {
       _menuController.forward();
     }
-  }
-
-  Future<void> _handleSignOut(BuildContext context) async {
-    try {
-      await AuthRepository.signOut();
-    } catch (e) {
-      safePrint('Sign-out failed: $e');
-    }
-
-    if (!mounted) return;
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      LoginPage.routeName,
-          (route) => false,
-    );
   }
 
   @override
@@ -85,9 +85,10 @@ class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // This is your existing header widget
+                  /// Header includes the burger icon
                   JuechoHeader(onMenuTap: _toggleMenu),
-                  const SizedBox(height: 8),
+
+                  /// Page-specific body
                   Expanded(child: widget.body),
                 ],
               ),
@@ -97,12 +98,13 @@ class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
             AnimatedBuilder(
               animation: _menuController,
               builder: (context, child) {
-                if (_menuController.value == 0) {
-                  return const SizedBox.shrink();
-                }
+                // Fully closed -> don't render overlay at all.
+                if (_menuController.value == 0) return const SizedBox.shrink();
+
                 return IgnorePointer(
                   ignoring: _menuController.value == 0,
                   child: Container(
+                    // Dimmed background
                     color: Colors.black.withValues(alpha: 0.12),
                     child: Align(
                       alignment: Alignment.topCenter,
@@ -116,9 +118,7 @@ class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
               },
               child: Padding(
                 padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
-                child: AdminHamburgerMenu(
-                  closeMenu: _toggleMenu,
-                ),
+                child: AdminHamburgerMenu(closeMenu: _toggleMenu),
               ),
             ),
           ],

@@ -112,8 +112,8 @@ class FeedbackSubmission {
       ownerId: json['ownerId'] as String,
       serviceCategory:
       ServiceCategoryParser.fromKey(json['serviceCategory'] as String),
-      title: json['title'] as String,
-      description: json['description'] as String,
+      title: json['title'] as String?,
+      description: json['description'] as String?,
       suggestion: json['suggestion'] as String?,
       rating: json['rating'] as int,
       attachmentKey: json['attachmentKey'] as String?,
@@ -152,7 +152,7 @@ class FeedbackSubmission {
       'rating': rating,
       'attachmentKey': attachmentKey,
       'status': statusKey,
-      'createdAt': createdAt.toUtc().toIso8601String(),
+      'createdAt': createdAt.toIso8601String(),
     };
   }
   /// All user (GENERAL) replies, sorted oldest → newest.

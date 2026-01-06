@@ -1,15 +1,17 @@
+// amplify/storage/resource.ts
 import { defineStorage } from '@aws-amplify/backend';
 
 export const storage = defineStorage({
-  // Friendly name – will appear in amplify_outputs
   name: 'feedbackImageStorage',
-
-  // Access rules for S3 paths
   access: (allow) => ({
-    // All feedback images go under the "incoming/" prefix
-    // Only authenticated users (signed in) can read/write/delete
-    'incoming/*': [
-      allow.authenticated.to(['read', 'write', 'delete']),
+    // All feedback images are stored under:
+    // incoming/{entity_id}/...
+    //
+    // - The owner (identity) can read/write/delete their own files
+    // - Admins can read/delete ANY student's files
+    'incoming/{entity_id}/*': [
+      allow.entity('identity').to(['read', 'write', 'delete']),
+      allow.groups(['admin']).to(['read', 'delete']),
     ],
   }),
 });

@@ -35,15 +35,15 @@ dependencies:
   amplify_authenticator: ^2.0.0
   amplify_api: ^2.0.0
   flutter_svg: ^2.2.1
-  connectivity_plus: ^6.1.5
-  image_picker: ^1.2.1
   amplify_storage_s3: ^2.7.0
   path: ^1.9.1
   file_picker: ^10.3.7
+  fl_chart: ^1.1.1
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  provider: ^6.1.5+1
 
 dev_dependencies:
   flutter_test:
@@ -60,6 +60,8 @@ dev_dependencies:
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
+#dependency_overrides:
+#  connectivity_plus: null
 flutter:
 
   # The following line ensures that the Material Icons font is
@@ -70,6 +72,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/JUEcho_BGR.svg
+    - assets/config/amplify_outputs.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

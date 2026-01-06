@@ -1,34 +1,34 @@
+import 'package:amplify_api/amplify_api.dart';
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 
-
-/// Simple data model for the user profile.
 class ProfileData {
-  final String? userId;
+  final String userId;
   final String email;
   final String firstName;
   final String lastName;
+  final String role;
 
   const ProfileData({
-    this.userId,
+    required this.userId,
     required this.firstName,
     required this.lastName,
     required this.email,
+    required this.role,
   });
 
   factory ProfileData.fromJson(Map<String, dynamic> json) {
     return ProfileData(
-      userId: json['userId'] as String?,
+      userId: (json['userId'] as String? ?? '').trim(),
       email: (json['email'] as String? ?? '').trim(),
       firstName: (json['firstName'] as String? ?? '').trim(),
       lastName: (json['lastName'] as String? ?? '').trim(),
+      role: (json['role'] as String? ?? '').trim(),
     );
   }
 }
 
 class ProfileRepository {
-  // ---------- GraphQL documents ----------
-
   static const String _updateUserMutation = r'''
     mutation UpdateUser($input: UpdateUserInput!) {
       updateUser(input: $input) {
@@ -37,13 +37,11 @@ class ProfileRepository {
     }
   ''';
 
-   /// Update only first & last name for current user.
   static Future<void> updateNames({
     required String firstName,
     required String lastName,
   }) async {
-    final session =
-    await Amplify.Auth.fetchAuthSession() as CognitoAuthSession;
+    final session = await Amplify.Auth.fetchAuthSession() as CognitoAuthSession;
     final userId = session.userSubResult.value;
 
     final req = GraphQLRequest<String>(
@@ -65,10 +63,6 @@ class ProfileRepository {
     }
   }
 
-  /// Change password using Cognito.
-  ///
-  /// UI is responsible for catching [NotAuthorizedException],
-  /// [InvalidPasswordException], [LimitExceededException], etc.
   static Future<void> changePassword({
     required String oldPassword,
     required String newPassword,
