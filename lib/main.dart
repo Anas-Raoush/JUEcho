@@ -50,30 +50,6 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => NotificationsProvider()),
 
         // Providers that DEPEND on AuthProvider (profile comes from auth.profile)
-        ChangeNotifierProxyProvider<AuthProvider, AdminNewSubmissionsProvider>(
-          create: (context) =>
-          AdminNewSubmissionsProvider(context.read<AuthProvider>())..init(),
-          update: (context, auth, prev) {
-            if (prev != null) {
-              prev.updateAuth(auth);
-              return prev;
-            }
-            return AdminNewSubmissionsProvider(auth)..init();
-          },
-        ),
-
-        ChangeNotifierProxyProvider<AuthProvider, AdminReviewSubmissionsProvider>(
-          create: (context) =>
-          AdminReviewSubmissionsProvider(context.read<AuthProvider>())..init(),
-          update: (context, auth, prev) {
-            if (prev != null) {
-              prev.updateAuth(auth);
-              return prev;
-            }
-            return AdminReviewSubmissionsProvider(auth)..init();
-          },
-        ),
-
         ChangeNotifierProxyProvider<AuthProvider, MyFullSubmissionsProvider>(
           create: (context) =>
           MyFullSubmissionsProvider(context.read<AuthProvider>())..init(),
@@ -166,9 +142,20 @@ class JUEchoApp extends StatelessWidget {
         NotificationsPage.routeName: (_) => const NotificationsPage(),
 
         // Admin lists
-        AdminNewSubmissionsPage.routeName: (_) => const AdminNewSubmissionsPage(),
-        AdminSubmissionsReviewPage.routeName: (_) =>
-        const AdminSubmissionsReviewPage(),
+        AdminNewSubmissionsPage.routeName: (context) {
+          final auth = context.read<AuthProvider>();
+          return ChangeNotifierProvider(
+            create: (_) => AdminNewSubmissionsProvider(auth),
+            child: const AdminNewSubmissionsPage(),
+          );
+        },
+        AdminSubmissionsReviewPage.routeName: (context) {
+          final auth = context.read<AuthProvider>();
+          return ChangeNotifierProvider(
+            create: (_) => AdminReviewSubmissionsProvider(auth),
+            child: const AdminSubmissionsReviewPage(),
+          );
+        },
         AnalyticsReportsPage.routeName: (_) => const AnalyticsReportsPage(),
 
         // Per-page provider (needs id + auth)

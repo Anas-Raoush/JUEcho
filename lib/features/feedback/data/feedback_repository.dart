@@ -4,8 +4,20 @@ import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:juecho/common/constants/feedback_status_categories.dart';
 import 'package:juecho/common/constants/service_categories.dart';
 import 'package:juecho/features/feedback/data/models/feedback_model.dart';
+import 'package:juecho/features/feedback/presentation/widgets/admin/admin_submissions_sort.dart';
 import 'package:juecho/features/notifications/data/notifications_repository.dart';
 import 'package:juecho/features/profile/data/profile_repository.dart';
+
+/// Small container for paginated submission results.
+class SubmissionsPage {
+  final List<FeedbackSubmission> items;
+  final String? nextToken;
+
+  const SubmissionsPage({
+    required this.items,
+    required this.nextToken,
+  });
+}
 
 /// ============================================================================
 /// FEEDBACK REPOSITORY
@@ -198,30 +210,6 @@ class FeedbackRepository {
   // FULL PAYLOAD SUBSCRIPTIONS
   // ===========================================================================
 
-  static const String _onCreateSubmissionSub = r'''
-  subscription OnCreateSubmission {
-    onCreateSubmission {
-      id
-      ownerId
-      serviceCategory
-      title
-      description
-      suggestion
-      rating
-      attachmentKey
-      status
-      urgency
-      internalNotes
-      updatedById
-      updatedByName
-      respondedAt
-      createdAt
-      updatedAt
-      replies { fromRole message byId byName at }
-    }
-  }
-  ''';
-
   static const String _onUpdateSubmissionSub = r'''
   subscription OnUpdateSubmission {
     onUpdateSubmission {
@@ -245,6 +233,33 @@ class FeedbackRepository {
     }
   }
   ''';
+
+  static const String _listSubmissionsPagedQuery = r'''
+query ListSubmissionsPaged($filter: ModelSubmissionFilterInput, $limit: Int, $nextToken: String) {
+  listSubmissions(filter: $filter, limit: $limit, nextToken: $nextToken) {
+    items {
+      id
+      ownerId
+      serviceCategory
+      title
+      description
+      suggestion
+      rating
+      attachmentKey
+      status
+      urgency
+      internalNotes
+      updatedById
+      updatedByName
+      respondedAt
+      createdAt
+      updatedAt
+      replies { fromRole message byId byName at }
+    }
+    nextToken
+  }
+}
+''';
 
   // ===========================================================================
   // SAFE ID-ONLY SUBSCRIPTIONS
@@ -300,7 +315,7 @@ class FeedbackRepository {
   }
 
   // ===========================================================================
-  // PING STREAMS (ID ONLY)  ✅ used for dashboards/providers
+  // PING STREAMS
   // ===========================================================================
 
   /// Emits submission id when a submission is created.
@@ -570,33 +585,96 @@ class FeedbackRepository {
     return FeedbackSubmission.fromJson(json);
   }
 
-  static Future<List<FeedbackSubmission>> fetchAdminNewSubmissions() async {
+
+
+  static Map<String, dynamic>? buildAdminFilter({
+    required bool isAdminNewScope,
+    required bool isAdminReviewScope,
+    required AdminSubmissionsFilter filter,
+  }) {
+    final f = <String, dynamic>{};
+
+    if (isAdminNewScope) {
+      f['status'] = {'eq': 'SUBMITTED'};
+    }
+
+    if (isAdminReviewScope) {
+      const reviewStatuses = [
+        'RESOLVED',
+        'IN_PROGRESS',
+        'REJECTED',
+        'MORE_INFO_NEEDED',
+        'UNDER_REVIEW'
+      ];
+
+      f['or'] = reviewStatuses.map((s) => {'status': {'eq': s}}).toList();
+    }
+
+    if (filter.category != null) {
+      f['serviceCategory'] = {'eq': filter.category!.key};
+    }
+
+    if (filter.status != null) {
+      f.remove('or'); // important
+      f['status'] = {'eq': filter.status!.key};
+    }
+
+    if (filter.rating != null) {
+      f['rating'] = {'eq': filter.rating};
+    }
+
+    if (filter.urgency != null) {
+      f['urgency'] = {'eq': filter.urgency};
+    }
+
+    return f.isEmpty ? null : f;
+  }
+
+
+  static Future<SubmissionsPage> fetchSubmissionsPage({
+    Map<String, dynamic>? filter,
+    int limit = 20,
+    String? nextToken,
+  }) async {
     final req = GraphQLRequest<String>(
-      document: _listAdminSubmissionsByStatusQuery,
-      variables: {'status': 'SUBMITTED'},
+      document: _listSubmissionsPagedQuery,
+      variables: {
+        'filter': filter,
+        'limit': limit,
+        'nextToken': nextToken,
+      },
     );
 
     final res = await Amplify.API.query(request: req).response;
 
     if (res.errors.isNotEmpty) {
-      safePrint('fetchAdminNewSubmissions errors: ${res.errors}');
-      throw Exception('Failed to load new submissions');
+      safePrint('fetchSubmissionsPage errors: ${res.errors}');
+      throw Exception('Failed to load submissions page');
     }
-    if (res.data == null) return [];
 
+    if (res.data == null) {
+      return const SubmissionsPage(items: [], nextToken: null);
+    }
+    safePrint('RAW res.data = ${res.data}');
     final decoded = jsonDecode(res.data!) as Map<String, dynamic>;
     final list = decoded['listSubmissions'] as Map<String, dynamic>?;
-    final items = list?['items'] as List<dynamic>? ?? [];
 
-    final submissions = items
+    final items = (list?['items'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
         .map(FeedbackSubmission.fromJson)
         .toList();
 
-    submissions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return submissions;
-  }
+    final token = list?['nextToken'] as String?;
+    final statusCounts = <String, int>{};
+    for (final s in items) {
+      final k = s.status.key;
+      statusCounts[k] = (statusCounts[k] ?? 0) + 1;
+    }
 
+    items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return SubmissionsPage(items: items, nextToken: token);
+  }
   static Future<List<FeedbackSubmission>> fetchAdminReviewSubmissions() async {
     final req = GraphQLRequest<String>(document: _listAdminReviewSubmissionsQuery);
     final res = await Amplify.API.query(request: req).response;

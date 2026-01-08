@@ -95,13 +95,27 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Main sign-in handler.
+  /// Handles the user sign-in flow from the login screen.
   ///
   /// Flow:
-  /// 1) Validate form
-  /// 2) Call AuthProvider.signIn()
-  /// 3) If ok -> route to admin/general home
-  /// 4) If UserNotConfirmedException -> route to confirm code
+  /// 1) Validate the login form fields.
+  /// 2) Call [AuthProvider.signIn] to authenticate the user.
+  /// 3) On successful sign-in:
+  ///    - AuthProvider updates authentication state and role.
+  ///    - Navigate to AdminHomePage or GeneralHomePage accordingly.
+  /// 4) If [UserNotConfirmedException] is thrown:
+  ///    - Resend the confirmation code (best effort).
+  ///    - Navigate to ConfirmCodePage.
+  /// 5) If a [NetworkException] occurs:
+  ///    - Display a network-related error message.
+  /// 6) If an [AuthException] occurs:
+  ///    - Display the user-friendly error message provided by AuthProvider.
+  /// 7) Always reset the submitting/loading state at the end.
+  ///
+  /// Notes:
+  /// - This method relies on exceptions for control flow.
+  /// - It does NOT return a value; navigation happens only on success.
+  /// - AuthProvider is responsible for mapping Cognito errors into UI-safe messages.
   Future<void> _onLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -116,39 +130,19 @@ class _LoginPageState extends State<LoginPage> {
     final auth = context.read<AuthProvider>();
 
     try {
-      final ok = await auth.signIn(email: email, password: password);
-
-      if (!ok) {
-        setState(() => _error = 'Invalid email or password');
-        return;
-      }
+      await auth.signIn(email: email, password: password);
 
       if (!mounted) return;
-
       Navigator.pushReplacementNamed(
         context,
         auth.isAdmin ? AdminHomePage.routeName : GeneralHomePage.routeName,
       );
     } on UserNotConfirmedException {
       await _handleUnconfirmedUser(email: email, password: password);
-    } on AuthException catch (e) {
-      // Keep same mapping behavior you already had.
-      final msg = e.message.toLowerCase();
-      String uiMessage;
-
-      if (msg.contains('incorrect username or password') ||
-          (msg.contains('password') && msg.contains('incorrect'))) {
-        uiMessage = 'Incorrect email or password. Please try again.';
-      } else if (msg.contains('user does not exist') ||
-          msg.contains('user not found')) {
-        uiMessage = 'Incorrect email or password. Please try again.';
-      } else if (msg.contains('too many') && msg.contains('attempts')) {
-        uiMessage =
-        'Too many failed attempts. Please wait a moment and try again.';
-      } else {
-        uiMessage = 'Sign in failed. Please try again later.';
-      }
-      setState(() => _error = uiMessage);
+    } on NetworkException{
+      setState(() => _error = 'Sign in failed due to a network error.');
+    } on AuthException catch (_) {
+      setState(() => _error = auth.error);
     } catch (e) {
       safePrint('Generic sign-in error: $e');
       setState(() => _error = 'Sign in failed. Please try again later.');

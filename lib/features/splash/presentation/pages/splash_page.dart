@@ -49,7 +49,7 @@ class _SplashPageState extends State<SplashPage> {
     super.dispose();
   }
 
-  /// A "real internet" check (not only Wi-Fi connected).
+  /// An internet check.
   /// Uses DNS lookup to confirm actual connectivity.
   Future<bool> _hasRealInternet() async {
     try {

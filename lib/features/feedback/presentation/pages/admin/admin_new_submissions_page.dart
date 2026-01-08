@@ -36,13 +36,29 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
   AdminSubmissionSortKey _sortKey = AdminSubmissionSortKey.newestFirst;
   AdminSubmissionsFilter _filter = const AdminSubmissionsFilter();
 
+  final _scrollCtrl = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<AdminNewSubmissionsProvider>().init();
+      final prov = context.read<AdminNewSubmissionsProvider>();
+
+      prov.init();
+
+      _scrollCtrl.addListener(() {
+        if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
+          prov.loadMore();
+        }
+      });
     });
   }
 
@@ -96,8 +112,10 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
                       sortKey: _sortKey,
                       onSortChanged: (k) => setState(() => _sortKey = k),
                       filter: _filter,
-                      onFilterChanged: (newFilter) =>
-                          setState(() => _filter = newFilter),
+                      onFilterChanged: (newFilter) async {
+                        setState(() => _filter = newFilter);
+                        await context.read<AdminNewSubmissionsProvider>().applyBackendFilter(newFilter);
+                      },
                       showStatusFilter: false,
                       showUrgencyFilter: false,
                     ),
@@ -128,10 +146,7 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
                             );
                           }
 
-                          final rawItems = p.items;
-                          final items = rawItems.where((s) => s.isFullFeedback).toList();
-                          final filtered = applyAdminSubmissionsFilter(items, _filter);
-                          final sorted = [...filtered];
+                          final sorted = [...p.items];
                           sortSubmissions(sorted, _sortKey);
 
                           return RefreshIndicator(
@@ -150,6 +165,7 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
                             )
                                 : (twoCols
                                 ? GridView.builder(
+                              controller: _scrollCtrl,
                               padding: EdgeInsets.zero,
                               itemCount: sorted.length,
                               gridDelegate:
@@ -177,6 +193,7 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
                               },
                             )
                                 : ListView.builder(
+                              controller: _scrollCtrl,
                               padding: EdgeInsets.zero,
                               itemCount: sorted.length,
                               itemBuilder: (context, index) {

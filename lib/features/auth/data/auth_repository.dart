@@ -307,6 +307,8 @@ class AuthRepository {
 
     try {
       await doSignIn();
+    } on NetworkException{
+      rethrow;
     } on AuthException catch (e) {
       final msg = e.message.toLowerCase();
 

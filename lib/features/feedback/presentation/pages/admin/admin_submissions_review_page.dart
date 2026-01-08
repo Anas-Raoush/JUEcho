@@ -38,14 +38,28 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
   AdminSubmissionSortKey _sortKey = AdminSubmissionSortKey.newestFirst;
   AdminSubmissionsFilter _filter = const AdminSubmissionsFilter();
 
+  final _scrollCtrl = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
 
-    // Init provider AFTER first frame to avoid context issues.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<AdminReviewSubmissionsProvider>().init();
+      final prov = context.read<AdminReviewSubmissionsProvider>();
+      prov.init();
+
+      _scrollCtrl.addListener(() {
+        if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
+          prov.loadMore();
+        }
+      });
     });
   }
 
@@ -62,7 +76,6 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
   }
 
   double _maxWidthFor(double screenWidth) {
-    // Similar idea to your other pages: keep content readable on desktop.
     if (screenWidth >= 1100) return 1100;
     if (screenWidth >= 900) return 900;
     if (screenWidth >= 700) return 700;
@@ -93,8 +106,10 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
                       sortKey: _sortKey,
                       onSortChanged: (k) => setState(() => _sortKey = k),
                       filter: _filter,
-                      onFilterChanged: (newFilter) =>
-                          setState(() => _filter = newFilter),
+                      onFilterChanged: (newFilter) async {
+                        setState(() => _filter = newFilter);
+                        await context.read<AdminReviewSubmissionsProvider>().applyBackendFilter(newFilter);
+                      },
                     ),
 
                     const SizedBox(height: 8),
@@ -130,11 +145,7 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
                               ),
                             );
                           }
-
-                          // Apply filters + sorting.
-                          final filtered =
-                          applyAdminSubmissionsFilter(p.items, _filter);
-                          final sorted = [...filtered];
+                          final sorted = [...p.items];
                           sortSubmissions(sorted, _sortKey);
 
                           // ---- Empty state ----
@@ -164,6 +175,7 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
                             onRefresh: () => _refresh(context),
                             child: twoColumns
                                 ? GridView.builder(
+                              controller: _scrollCtrl,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
                                 vertical: 8,
@@ -174,10 +186,6 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
-
-                                /// ✅ FIX OVERFLOW:
-                                /// Give each card a stable height so the button fits
-                                /// and we never get "BOTTOM OVERFLOWED".
                                 mainAxisExtent: 360,
                               ),
                               itemBuilder: (context, index) {
@@ -209,6 +217,7 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
                               },
                             )
                                 : ListView.builder(
+                              controller: _scrollCtrl,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
                                 vertical: 8,

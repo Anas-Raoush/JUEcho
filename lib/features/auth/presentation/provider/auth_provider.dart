@@ -116,15 +116,38 @@ class AuthProvider extends ChangeNotifier {
 
   // ---------------- Auth actions ----------------
 
-  /// Sign in using email/password.
+  /// Signs in the user using email and password.
   ///
-  /// Returns:
-  /// - true on successful login and profile load
-  /// - false on failure (error message stored in [error])
+  /// Responsibilities:
+  /// - Perform authentication via [AuthRepository.signIn] (Cognito).
+  /// - Determine the user's role (admin or general).
+  /// - Load and cache the user's profile in memory.
+  /// - Update global authentication state.
+  /// - Map authentication errors to user-friendly messages.
   ///
-  /// Throws:
-  /// - [UserNotConfirmedException] if the user must confirm email first.
-  Future<bool> signIn({
+  /// Behavior:
+  /// - On success:
+  ///   - Sets auth status to signed in.
+  ///   - Determines admin role.
+  ///   - Loads user profile.
+  ///   - Notifies listeners.
+  /// - On [UserNotConfirmedException]:
+  ///   - Rethrows so the UI can handle confirmation flow.
+  /// - On [NetworkException]:
+  ///   - Rethrows so the UI can show a network error.
+  /// - On [AuthException]:
+  ///   - Maps Cognito error messages to readable UI messages.
+  ///   - Clears local auth state.
+  ///   - Rethrows for the UI to react.
+  /// - On any other error:
+  ///   - Clears local auth state.
+  ///   - Throws a generic sign-in failure.
+  ///
+  /// Notes:
+  /// - This method uses exceptions for flow control.
+  /// - UI must handle navigation and error presentation.
+  /// - This method does NOT perform navigation.
+  Future<void> signIn({
     required String email,
     required String password,
   }) async {
@@ -145,20 +168,38 @@ class AuthProvider extends ChangeNotifier {
 
       // Notify UI to rebuild.
       notifyListeners();
-      return true;
+      return;
     } on UserNotConfirmedException {
       // Let the caller handle this (navigate to confirmation flow).
       rethrow;
+    } on NetworkException{
+      // Let the caller handle this.
+      rethrow;
     } on AuthException catch (e) {
       // Cognito/Auth-specific errors (wrong password, user not found, etc.).
-      _error = e.message;
+      final msg = e.message.toLowerCase();
+
+      if (msg.contains('incorrect username or password') ||
+          (msg.contains('password') && msg.contains('incorrect'))) {
+        _error = 'Incorrect email or password. Please try again.';
+      } else if (msg.contains('user does not exist') ||
+          msg.contains('user not found')) {
+        _error = 'Incorrect email or password. Please try again.';
+      } else if (msg.contains('too many') && msg.contains('attempts')) {
+        _error =
+        'Too many failed attempts. Please wait a moment and try again.';
+      } else {
+        _error = 'Sign in failed. Please try again later.';
+      }
+      notifyListeners();
       _clearAuthState(signedIn: false);
-      return false;
+      rethrow;
     } catch (e) {
       safePrint('signIn error: $e');
       _error = 'Sign in failed. Please try again.';
       _clearAuthState(signedIn: false);
-      return false;
+      notifyListeners();
+      rethrow;
     }
   }
 

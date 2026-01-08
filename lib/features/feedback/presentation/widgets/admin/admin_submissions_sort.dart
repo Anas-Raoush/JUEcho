@@ -54,9 +54,9 @@ class AdminSubmissionsFilter {
 
 /// In–place sort of submissions according to the selected sort key.
 void sortSubmissions(
-    List<FeedbackSubmission> list,
-    AdminSubmissionSortKey sortKey,
-    ) {
+  List<FeedbackSubmission> list,
+  AdminSubmissionSortKey sortKey,
+) {
   int statusOrder(FeedbackStatusCategories s) =>
       FeedbackStatusCategories.values.indexOf(s);
 
@@ -72,7 +72,7 @@ void sortSubmissions(
       break;
 
     case AdminSubmissionSortKey.highestUrgency:
-    // null urgency at the end
+      // null urgency at the end
       list.sort((a, b) => urgencyValue(b).compareTo(urgencyValue(a)));
       break;
 
@@ -90,39 +90,19 @@ void sortSubmissions(
 
     case AdminSubmissionSortKey.serviceCategory:
       list.sort(
-            (a, b) => a.serviceCategory.label.compareTo(b.serviceCategory.label),
+        (a, b) => a.serviceCategory.label.compareTo(b.serviceCategory.label),
       );
       break;
 
     case AdminSubmissionSortKey.status:
       list.sort(
-            (a, b) => statusOrder(a.status).compareTo(statusOrder(b.status)),
+        (a, b) => statusOrder(a.status).compareTo(statusOrder(b.status)),
       );
       break;
   }
 }
 
-/// Returns a new list with the filter applied (original list is untouched).
-List<FeedbackSubmission> applyAdminSubmissionsFilter(
-    List<FeedbackSubmission> original,
-    AdminSubmissionsFilter filter,
-    ) {
-  return original.where((s) {
-    if (filter.category != null && s.serviceCategory != filter.category) {
-      return false;
-    }
-    if (filter.status != null && s.status != filter.status) {
-      return false;
-    }
-    if (filter.rating != null && s.rating != filter.rating) {
-      return false;
-    }
-    if (filter.urgency != null && s.urgency != filter.urgency) {
-      return false;
-    }
-    return true;
-  }).toList();
-}
+
 
 /// Reusable “Sort & Filter” bar for admin submissions pages.
 class AdminSubmissionsSortBar extends StatelessWidget {
@@ -160,7 +140,7 @@ class AdminSubmissionsSortBar extends StatelessWidget {
       case AdminSubmissionSortKey.lowestRating:
         return 'Lowest rating';
       case AdminSubmissionSortKey.serviceCategory:
-        return 'Service category (A→Z)';
+        return 'Service category (A to Z)';
       case AdminSubmissionSortKey.status:
         return 'Status';
     }
@@ -205,10 +185,10 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                 items: AdminSubmissionSortKey.values
                     .map(
                       (k) => DropdownMenuItem(
-                    value: k,
-                    child: Text(_sortLabel(k)),
-                  ),
-                )
+                        value: k,
+                        child: Text(_sortLabel(k)),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) {
                   if (value != null) {
@@ -240,10 +220,10 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                 items: ServiceCategories.values
                     .map(
                       (c) => DropdownMenuItem<ServiceCategories>(
-                    value: c,
-                    child: Text(c.label, overflow: TextOverflow.ellipsis),
-                  ),
-                )
+                        value: c,
+                        child: Text(c.label, overflow: TextOverflow.ellipsis),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) {
                   onFilterChanged(
@@ -266,19 +246,23 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                   items: FeedbackStatusCategories.values
                       .map(
                         (s) => DropdownMenuItem<FeedbackStatusCategories>(
-                      value: s,
-                      child: Text(s.label, overflow: TextOverflow.ellipsis),
-                    ),
-                  )
+                          value: s,
+                          child: Text(s.label, overflow: TextOverflow.ellipsis),
+                        ),
+                      )
                       .toList(),
                   onChanged: (value) {
                     onFilterChanged(
-                      filter.copyWith(status: value, clearStatus: value == null),
+                      filter.copyWith(
+                        status: value,
+                        clearStatus: value == null,
+                      ),
                     );
                   },
                 ),
               ),
-            ],],
+            ],
+          ],
         ),
         const SizedBox(height: 8),
 
@@ -294,10 +278,10 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                 items: List.generate(5, (i) => i + 1)
                     .map(
                       (r) => DropdownMenuItem<int>(
-                    value: r,
-                    child: Text(r.toString()),
-                  ),
-                )
+                        value: r,
+                        child: Text(r.toString()),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) {
                   onFilterChanged(
@@ -317,10 +301,10 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                   items: List.generate(5, (i) => i + 1)
                       .map(
                         (u) => DropdownMenuItem<int>(
-                      value: u,
-                      child: Text(u.toString()),
-                    ),
-                  )
+                          value: u,
+                          child: Text(u.toString()),
+                        ),
+                      )
                       .toList(),
                   onChanged: (value) {
                     onFilterChanged(

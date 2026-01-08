@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:juecho/common/constants/feedback_status_categories.dart';
 import 'package:juecho/common/constants/notification_types.dart';
@@ -30,37 +29,6 @@ class NotificationsRepository {
   ''';
 // inside NotificationsRepository
 
-  static const String _onCreateNotificationSub = r'''
-subscription OnCreateNotification {
-  onCreateNotification {
-    id
-    recipientId
-    submissionId
-    type
-    title
-    body
-    isRead
-    createdAt
-    readAt
-  }
-}
-''';
-
-  static const String _onUpdateNotificationSub = r'''
-subscription OnUpdateNotification {
-  onUpdateNotification {
-    id
-    recipientId
-    submissionId
-    type
-    title
-    body
-    isRead
-    createdAt
-    readAt
-  }
-}
-''';
   static const String _listNotificationsQuery = r'''
   query ListNotifications($recipientId: ID) {
     listNotifications(
@@ -81,7 +49,7 @@ subscription OnUpdateNotification {
   }
   ''';
 
-  // ✅ NEW: fetch by recipient id (doesn't touch AuthRepository at all)
+  // fetch by recipient id (doesn't touch AuthRepository at all)
   static Future<List<AppNotification>> fetchNotificationsForUser(
       String recipientId,
       ) async {
@@ -110,36 +78,6 @@ subscription OnUpdateNotification {
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     return notifications;
-  }
-
-  static Stream<AppNotification> onNotificationCreated() {
-    final req = GraphQLRequest<String>(document: _onCreateNotificationSub);
-
-    final op = Amplify.API.subscribe(
-      req,
-      onEstablished: () => safePrint('onCreateNotification established'),
-    );
-
-    return op.map((event) {
-      final decoded = jsonDecode(event.data!) as Map<String, dynamic>;
-      final json = decoded['onCreateNotification'] as Map<String, dynamic>;
-      return AppNotification.fromJson(json);
-    }).handleError((e) => safePrint('onNotificationCreated error: $e'));
-  }
-
-  static Stream<AppNotification> onNotificationUpdated() {
-    final req = GraphQLRequest<String>(document: _onUpdateNotificationSub);
-
-    final op = Amplify.API.subscribe(
-      req,
-      onEstablished: () => safePrint('onUpdateNotification established'),
-    );
-
-    return op.map((event) {
-      final decoded = jsonDecode(event.data!) as Map<String, dynamic>;
-      final json = decoded['onUpdateNotification'] as Map<String, dynamic>;
-      return AppNotification.fromJson(json);
-    }).handleError((e) => safePrint('onNotificationUpdated error: $e'));
   }
 
   static Future<List<AppNotification>> fetchMyNotifications() async {
