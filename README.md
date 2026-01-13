@@ -153,13 +153,13 @@ To set up Amplify for this project, refer to the official AWS documentation:
   https://docs.amplify.aws/gen2/start/
 
 - **Authentication with Amazon Cognito**  
-  https://docs.amplify.aws/gen2/auth/
+  [https://docs.amplify.aws/gen2/auth/](https://docs.amplify.aws/flutter/build-a-backend/auth/)
 
 - **GraphQL API with AWS AppSync**  
-  https://docs.amplify.aws/gen2/data/
+  [https://docs.amplify.aws/gen2/data/](https://docs.amplify.aws/flutter/build-a-backend/data/)
 
 - **File Storage with Amazon S3**  
-  https://docs.amplify.aws/gen2/storage/
+  [https://docs.amplify.aws/gen2/storage/](https://docs.amplify.aws/flutter/build-a-backend/storage/)
 
 After configuring Amplify, the generated configuration file (`amplify_outputs.json`) is used by the Flutter application to connect to AWS services.
 
