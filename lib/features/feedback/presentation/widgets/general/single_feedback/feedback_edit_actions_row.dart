@@ -1,10 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:juecho/common/constants/app_colors.dart';
 
+/// Action row used by general users when editing a submission.
+///
+/// Contains:
+/// - Save changes button (outlined style)
+/// - Delete button (outlined style)
+///
+/// Button states:
+/// - Save is disabled when [isSaving] is true.
+/// - Delete is disabled when [isDeleting] is true.
+/// - Each button shows a compact spinner during its active operation.
 class FeedbackEditActionsRow extends StatelessWidget {
+  /// Indicates a save operation is in progress.
   final bool isSaving;
+
+  /// Indicates a delete operation is in progress.
   final bool isDeleting;
+
+  /// Invoked when the user saves changes to the submission.
   final VoidCallback onSave;
+
+  /// Invoked when the user deletes the submission.
   final VoidCallback onDelete;
 
   const FeedbackEditActionsRow({

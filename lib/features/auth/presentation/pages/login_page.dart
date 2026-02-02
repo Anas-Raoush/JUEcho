@@ -16,21 +16,24 @@ import 'package:juecho/features/auth/presentation/pages/signup_page.dart';
 import 'package:juecho/features/auth/presentation/provider/auth_provider.dart';
 import 'package:juecho/features/auth/presentation/widgets/auth_logo_header.dart';
 
-/// Login screen for the app.
+/// Authentication entry screen for the application.
 ///
 /// Responsibilities:
-/// - Validate JU email + password.
-/// - Call AuthProvider.signIn().
-/// - Handle unconfirmed users (redirect to ConfirmCodePage).
-/// - Navigate to AdminHomePage / GeneralHomePage based on admin flag.
+/// - Collect and validate JU email + password.
+/// - Trigger sign-in through AuthProvider (Cognito-backed).
+/// - Handle unconfirmed accounts by redirecting to confirmation flow.
+/// - Route authenticated users to the correct home screen:
+///   -> AdminHomePage for admin users
+///   -> GeneralHomePage for general users
 ///
-/// Note:
-/// - This file only changes layout to be responsive.
-/// - Sign-in functionality is untouched.
+/// Implementation notes:
+/// - UI is responsive via ResponsiveScaffold to keep form width readable on larger screens.
+/// - This page does not implement authentication directly; it delegates to AuthProvider.
+/// - All navigation is performed only after a successful provider operation.
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
-  /// Named route used with Navigator.pushNamed.
+  /// Route name for Navigator.pushNamed / pushReplacementNamed.
   static const routeName = '/login';
 
   @override
@@ -38,19 +41,17 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  /// Form key used to validate the email + password form.
+  /// Form key for validation and submission.
   final _formKey = GlobalKey<FormState>();
 
-  /// Controller for email input.
+  /// Controllers for form inputs.
   final _emailCtrl = TextEditingController();
-
-  /// Controller for password input.
   final _passwordCtrl = TextEditingController();
 
-  /// Indicates whether a sign-in request is currently in progress.
+  /// UI state:
+  /// - _isSubmitting disables the button and shows a spinner during sign-in.
+  /// - _error renders a user-facing error message at the top of the form.
   bool _isSubmitting = false;
-
-  /// Holds a user-facing error message displayed above the form.
   String? _error;
 
   @override
@@ -60,12 +61,13 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  /// Handles the case where the user is not confirmed in Cognito.
+  /// Handles "user not confirmed" scenario.
   ///
-  /// Behavior:
-  /// - Resends sign-up code (best effort).
-  /// - Shows a SnackBar.
-  /// - Navigates to ConfirmCodePage with email + password.
+  /// Flow:
+  /// - Best-effort resend of the confirmation code to the provided email.
+  /// - Notify user via SnackBar.
+  /// - Navigate to ConfirmCodePage, passing email/password so confirmation flow
+  ///   can create the app profile after verification if needed.
   Future<void> _handleUnconfirmedUser({
     required String email,
     required String password,
@@ -95,27 +97,23 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Handles the user sign-in flow from the login screen.
+  /// Executes the sign-in flow from the login form.
   ///
   /// Flow:
-  /// 1) Validate the login form fields.
-  /// 2) Call [AuthProvider.signIn] to authenticate the user.
-  /// 3) On successful sign-in:
-  ///    - AuthProvider updates authentication state and role.
-  ///    - Navigate to AdminHomePage or GeneralHomePage accordingly.
-  /// 4) If [UserNotConfirmedException] is thrown:
-  ///    - Resend the confirmation code (best effort).
-  ///    - Navigate to ConfirmCodePage.
-  /// 5) If a [NetworkException] occurs:
-  ///    - Display a network-related error message.
-  /// 6) If an [AuthException] occurs:
-  ///    - Display the user-friendly error message provided by AuthProvider.
-  /// 7) Always reset the submitting/loading state at the end.
+  /// 1) Validate form inputs.
+  /// 2) Call AuthProvider.signIn(email, password).
+  /// 3) On success, route based on AuthProvider.isAdmin.
   ///
-  /// Notes:
-  /// - This method relies on exceptions for control flow.
-  /// - It does NOT return a value; navigation happens only on success.
-  /// - AuthProvider is responsible for mapping Cognito errors into UI-safe messages.
+  /// Error handling:
+  /// - UserNotConfirmedException:
+  ///   -> resend confirmation code (best effort)
+  ///   -> route to ConfirmCodePage
+  /// - NetworkException:
+  ///   -> show a network error message
+  /// - AuthException:
+  ///   -> use the provider's mapped user-facing error message
+  /// - Any other exception:
+  ///   -> show a generic failure message
   Future<void> _onLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -126,20 +124,20 @@ class _LoginPageState extends State<LoginPage> {
 
     final email = _emailCtrl.text.trim();
     final password = _passwordCtrl.text.trim();
-
     final auth = context.read<AuthProvider>();
 
     try {
       await auth.signIn(email: email, password: password);
 
       if (!mounted) return;
+
       Navigator.pushReplacementNamed(
         context,
         auth.isAdmin ? AdminHomePage.routeName : GeneralHomePage.routeName,
       );
     } on UserNotConfirmedException {
       await _handleUnconfirmedUser(email: email, password: password);
-    } on NetworkException{
+    } on NetworkException {
       setState(() => _error = 'Sign in failed due to a network error.');
     } on AuthException catch (_) {
       setState(() => _error = auth.error);
@@ -151,12 +149,12 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// Navigate to forgot password page.
+  /// Routes to ForgotPasswordPage.
   void _onForgotPassword() {
     Navigator.pushNamed(context, ForgotPasswordPage.routeName);
   }
 
-  /// Navigate to signup page.
+  /// Routes to SignupPage.
   void _onGoToSignup() {
     Navigator.pushNamed(context, SignupPage.routeName);
   }
@@ -164,24 +162,19 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return ResponsiveScaffold(
-
-      // Auth forms should not stretch too wide.
+      /// Keeps auth forms readable on tablet/web by constraining width.
       maxWidth: 520,
-
       body: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          /// Logo + title block (reusable).
           const AuthLogoHeader(
             title: 'Sign in',
             spacingBelowLogo: 25,
             spacingBelowTitle: 24,
           ),
 
-          /// User-facing error text.
           ErrorMessage(error: _error),
 
-          /// Email + password form.
           Form(
             key: _formKey,
             child: Column(
@@ -281,7 +274,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Builds a consistent InputDecoration for all fields.
+  /// Standardized InputDecoration for login fields.
+  ///
+  /// Maintains consistent styling and focused border behavior across the form.
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,

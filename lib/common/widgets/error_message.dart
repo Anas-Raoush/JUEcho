@@ -1,27 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:juecho/common/constants/app_colors.dart';
 
-/// Small reusable widget to display an authentication-related error message.
+/// Inline error message widget used across forms and pages.
 ///
-/// Usage:
-///   - Pass a non-null [error] string to show a red error text with spacing.
-///   - If [error] is null, this widget renders as an empty box (`SizedBox.shrink`)
-///     so it doesn't affect layout.
+/// Behavior
+/// - When [error] is null, renders nothing and does not affect layout.
+/// - When [error] is non-null, renders a centered red message with spacing.
+///
+/// Intended usage
+/// - Authentication forms
+/// - Submission forms
+/// - Any UI surface where a simple inline error message is required
 class ErrorMessage extends StatelessWidget {
   const ErrorMessage({
     super.key,
     required this.error,
   });
 
-  /// The error message to display.
+  /// Error message to display.
   ///
-  /// - `null` -> nothing is rendered.
-  /// - non-null -> shown as red text, centered, with a bit of space below.
+  /// - null -> widget is hidden
+  /// - non-null -> message is displayed
   final String? error;
 
   @override
   Widget build(BuildContext context) {
-    // If there's no error, don't take any visual space.
     if (error == null) return const SizedBox.shrink();
 
     return Column(

@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 
+/// Action row for attachment operations on a feedback submission.
+///
+/// Provides:
+/// - "View attachment" (primary outlined button)
+/// - "Download" (text button)
+///
+/// The parent controls the actual behaviors via [onPreview] and [onDownload].
 class FeedbackAttachmentActions extends StatelessWidget {
+  /// Opens a preview UI for the attachment.
   final VoidCallback onPreview;
+
+  /// Downloads the attachment to the device.
   final VoidCallback onDownload;
 
   const FeedbackAttachmentActions({
@@ -23,7 +34,7 @@ class FeedbackAttachmentActions extends StatelessWidget {
               backgroundColor: AppColors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                side: BorderSide(
+                side: const BorderSide(
                   color: AppColors.primary,
                   width: 2,
                 ),

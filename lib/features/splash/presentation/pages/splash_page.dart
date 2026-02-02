@@ -11,11 +11,22 @@ import 'package:juecho/features/home/presentation/pages/admin_home_page.dart';
 import 'package:juecho/features/home/presentation/pages/general_home_page.dart';
 import 'package:juecho/features/splash/presentation/widgets/logo_with_echo.dart';
 
-/// Splash page:
-/// - Shows the animated logo
-/// - Checks connectivity BEFORE calling auth.bootstrap()
-/// - If offline: shows a small offline UI + Retry
-/// - If online: proceeds with the existing navigation logic
+
+/// Entry screen responsible for:
+/// - Displaying the brand splash animation for a fixed delay
+/// - Checking internet connectivity before invoking authentication bootstrap
+/// - Routing users to the correct initial page based on auth state
+///
+/// Navigation flow:
+/// - wait splash delay -> connectivity check
+/// - if offline -> show offline UI with Retry
+/// - if online -> auth.bootstrap()
+///     -> if not signed in -> LoginPage
+///     -> if signed in and admin -> AdminHomePage
+///     -> if signed in and not admin -> GeneralHomePage
+///
+/// Connectivity model:
+/// - Uses DNS lookup against "example.com" with a timeout to validate real connectivity.
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
 
@@ -35,8 +46,6 @@ class _SplashPageState extends State<SplashPage> {
   void initState() {
     super.initState();
 
-    // Keep the splash visible for your original delay,
-    // then run connectivity + navigation.
     _timer = Timer(const Duration(milliseconds: 3200), () async {
       if (!mounted) return;
       await _checkInternetAndNavigate();
@@ -49,8 +58,10 @@ class _SplashPageState extends State<SplashPage> {
     super.dispose();
   }
 
-  /// An internet check.
-  /// Uses DNS lookup to confirm actual connectivity.
+  /// Performs a best-effort internet check by resolving a known domain.
+  /// Returns:
+  /// - true if a valid address is resolved within the timeout
+  /// - false otherwise
   Future<bool> _hasRealInternet() async {
     try {
       final result = await InternetAddress.lookup('example.com')
@@ -78,10 +89,12 @@ class _SplashPageState extends State<SplashPage> {
       return;
     }
 
-    // Internet OK → proceed to original logic
     await _navigateAfterSplash();
   }
 
+  /// Bootstraps authentication state and routes to the correct initial screen.
+  /// Failure handling:
+  /// - Any exception falls back to LoginPage to avoid blocking the user.
   Future<void> _navigateAfterSplash() async {
     try {
       final auth = context.read<AuthProvider>();

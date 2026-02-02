@@ -11,27 +11,22 @@ import 'package:juecho/features/auth/presentation/pages/confirm_code_page.dart';
 import 'package:juecho/features/auth/presentation/provider/auth_provider.dart';
 import 'package:juecho/features/auth/presentation/widgets/auth_logo_header.dart';
 
-/// Screen that handles registration of a new "general" user.
+/// Registration screen for creating a new general user account.
 ///
 /// Responsibilities:
 /// - Collect first name, last name, JU email, and password.
-/// - Validate all fields locally.
-/// - Call AuthProvider.signUpGeneral() to:
-///   - create Cognito user
-///   - create PendingUser record
-/// - Navigate to ConfirmCodePage on success.
+/// - Validate all fields locally prior to sending requests.
+/// - Delegate registration to AuthProvider.signUpGeneral():
+///   -> creates a Cognito user
+///   -> creates a PendingUser record (used to persist name details pre-confirmation)
+/// - Navigate to ConfirmCodePage on successful sign up.
 ///
 /// Responsive behavior:
-/// - Constrains width (maxWidth: 520) for tablet/web readability.
-/// - Uses a 2-column layout for First/Last name on wider screens (>= 600px).
-///
-/// Note:
-/// - Only layout changed to responsive.
-/// - Signup logic and provider calls are untouched.
+/// - Uses ResponsiveScaffold(maxWidth: 520) to constrain form width on larger displays.
+/// - Switches to a two-column layout for first/last name on wider screens (>= 600px).
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
 
-  /// Named route used with Navigator.
   static const routeName = '/signup';
 
   @override
@@ -62,12 +57,22 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
-  /// Primary sign-up handler.
+  /// Submits the registration form.
   ///
   /// Flow:
-  /// 1) Validate form
-  /// 2) AuthProvider.signUpGeneral()
-  /// 3) Navigate to ConfirmCodePage with required args
+  /// - Validate input.
+  /// - AuthProvider.signUpGeneral(email, password, firstName, lastName)
+  /// - Navigate to ConfirmCodePage with confirmation arguments.
+  ///
+  /// Error handling:
+  /// - UsernameExistsException:
+  ///   -> show a dedicated message suggesting sign-in / forgot password
+  /// - InvalidPasswordException:
+  ///   -> show an explicit password policy message
+  /// - Any other AuthException:
+  ///   -> show the provider message
+  /// - Any other error:
+  ///   -> show a generic failure message
   Future<void> _onSignup() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -124,12 +129,11 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
-  /// Navigate back to login page (previous route).
+  /// Returns to the previous route (typically LoginPage).
   void _onGoToLogin() => Navigator.pop(context);
 
   @override
   Widget build(BuildContext context) {
-    // Screen-based breakpoint (NOT affected by maxWidth constraints).
     final screenW = MediaQuery.of(context).size.width;
     final twoColumn = screenW >= 600;
 
@@ -150,7 +154,6 @@ class _SignupPageState extends State<SignupPage> {
             key: _formKey,
             child: Column(
               children: [
-                // First + Last name in one row on wider screens
                 if (twoColumn)
                   Row(
                     children: [
@@ -309,7 +312,7 @@ class _SignupPageState extends State<SignupPage> {
     );
   }
 
-  /// Reusable input decoration builder.
+  /// Standardized InputDecoration for signup fields.
   InputDecoration _inputDecoration(String label) => InputDecoration(
     labelText: label,
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(radius)),

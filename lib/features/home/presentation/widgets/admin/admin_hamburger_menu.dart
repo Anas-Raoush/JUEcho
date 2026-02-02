@@ -1,32 +1,41 @@
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
-import 'package:juecho/features/home/presentation/pages/admin_home_page.dart';
 import 'package:juecho/features/analytics/presentation/pages/analytics_reports_page.dart';
 import 'package:juecho/features/auth/data/auth_repository.dart';
 import 'package:juecho/features/auth/presentation/pages/login_page.dart';
+import 'package:juecho/features/home/presentation/pages/admin_home_page.dart';
 import 'package:juecho/features/home/presentation/widgets/shared/menu_item.dart';
 import 'package:juecho/features/notifications/presentation/pages/notifications_page.dart';
 
-/// Admin hamburger menu overlay content.
+/// AdminHamburgerMenu
+///
+/// Slide-down overlay menu content for ADMIN users.
 ///
 /// Responsibilities:
-/// - Navigate to: Home, Notifications, Analytics
-/// - Sign out
+/// - Provide quick navigation shortcuts:
+///   -> Notifications
+///   -> Analytics
+///   -> Home
+/// - Perform sign-out and reset the navigation stack back to LoginPage.
 ///
-/// Responsive (same style as GeneralHamburgerMenu):
-/// - On wide screens: one row with 4 items.
-/// - On narrow screens: two rows (2 items per row) to avoid squeezing/overflow.
-/// - Also constrains width so it doesn’t stretch ugly on desktop.
+/// Navigation rules:
+/// - Home uses pushNamedAndRemoveUntil to ensure a clean stack.
+/// - Sign out uses pushNamedAndRemoveUntil after clearing session.
+///
+/// Responsive layout:
+/// - Constrains maximum width to avoid overly wide menus on tablet/web.
+/// - Uses one-row layout when there is enough space.
+/// - Switches to two rows (2 items per row) on very narrow widths to avoid squishing.
 class AdminHamburgerMenu extends StatelessWidget {
   const AdminHamburgerMenu({
     super.key,
     required this.closeMenu,
   });
 
+  /// Callback provided by the parent scaffold to close the overlay.
   final VoidCallback closeMenu;
-
-  // ---------- actions ----------
 
   Future<void> _handleNotificationsTap(BuildContext context) async {
     closeMenu();
@@ -70,7 +79,7 @@ class AdminHamburgerMenu extends StatelessWidget {
     );
   }
 
-  /// Keeps the popup menu looking nice on large screens.
+  /// Width clamp for cleaner desktop/tablet rendering.
   double _maxWidthFor(double w) {
     if (w >= 900) return 700;
     if (w >= 600) return 560;
@@ -84,8 +93,7 @@ class AdminHamburgerMenu extends StatelessWidget {
         final w = constraints.maxWidth;
         final maxWidth = _maxWidthFor(w);
 
-        // Same “feel” as general menu:
-        // If width is tight, split into 2 rows instead of squeezing.
+        // When width is tight, avoid squishing by splitting into two rows.
         final bool compact = w < 350;
 
         final notificationsItem = MenuItem(
@@ -138,7 +146,6 @@ class AdminHamburgerMenu extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Title + close X
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -159,7 +166,6 @@ class AdminHamburgerMenu extends StatelessWidget {
                   const SizedBox(height: 12),
 
                   if (!compact) ...[
-                    // ✅ Wide: one row (same as GeneralHamburgerMenu style)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
@@ -170,7 +176,6 @@ class AdminHamburgerMenu extends StatelessWidget {
                       ],
                     ),
                   ] else ...[
-                    // ✅ Narrow: two rows (2 items per row)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:juecho/common/constants/feedback_status_categories.dart';
 import 'package:juecho/common/constants/service_categories.dart';
 import 'package:provider/provider.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/common/widgets/page_title.dart';
 import 'package:juecho/features/feedback/presentation/pages/general/single_feedback_page.dart';
@@ -9,26 +10,19 @@ import 'package:juecho/features/feedback/presentation/providers/submissions_prov
 import 'package:juecho/features/feedback/presentation/widgets/shared/card_data.dart';
 import 'package:juecho/features/home/presentation/widgets/general/general_scaffold_with_menu.dart';
 
-/// General user page: lists the user's *full* feedback submissions.
+/// General user page: lists the user's FULL feedback submissions.
 ///
-/// Data source:
-/// - Uses [MyFullSubmissionsProvider] which loads submissions for the current user.
-/// - The provider relies on [AuthProvider.profile] internally via dependency injection.
+/// Features:
+/// - Provider init after first frame
+/// - Pull-to-refresh
+/// - Loading / error / empty states
+/// - Responsive:
+///   - < 900px: 1-column ListView
+///   - >= 900px: 2-column GridView
+/// - Centers content + constrains width on large screens
 ///
-/// UX:
-/// - Pull-to-refresh.
-/// - Loading state, error state, empty state.
-/// - Each item navigates to [SingleFeedbackPage].
-///
-/// Responsive behavior:
-/// - If the available width is large enough, show 2 cards per row.
-/// - Otherwise show 1 card per row.
-/// - Uses [LayoutBuilder] because it reacts to the actual available width
-///   inside the scaffold, not just the device screen size.
-///
-/// Layout:
-/// - Relies on [GeneralScaffoldWithMenu] for the outer padding (16 horizontal).
-/// - Only adds light vertical padding inside (to match other pages).
+/// Notes:
+/// - Uses LayoutBuilder so responsiveness reacts to available width inside the scaffold.
 class MyFeedbackPage extends StatefulWidget {
   const MyFeedbackPage({super.key});
 
@@ -43,7 +37,6 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
   void initState() {
     super.initState();
 
-    // Initialize provider AFTER first frame to avoid context issues.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<MyFullSubmissionsProvider>().init();
@@ -61,12 +54,14 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
     final yyyy = local.year.toString();
     return '$dd/$mm/$yyyy';
   }
+
   double _maxWidthFor(double w) {
     if (w >= 1200) return 1000;
     if (w >= 900) return 900;
     if (w >= 600) return 600;
     return double.infinity;
   }
+
   @override
   Widget build(BuildContext context) {
     final p = context.watch<MyFullSubmissionsProvider>();
@@ -80,11 +75,17 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: _refresh,
-              child:  LayoutBuilder(
+              child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final maxWidth = _maxWidthFor(screenWidth);
-                  final bool twoColumns = constraints.maxWidth >= 900;
+                  // Use available width (constraints), and only use MediaQuery
+                  // when you truly need device-wide info.
+                  final availableW = constraints.maxWidth;
+
+                  // Constrain centered content on large screens.
+                  final maxWidth = _maxWidthFor(availableW);
+
+                  // 2 columns only when there's enough space.
+                  final bool twoColumns = availableW >= 900;
 
                   Widget content;
 
@@ -120,7 +121,7 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
                       ],
                     );
                   }
-                  // ---- Data ----
+                  // ---- Data (List) ----
                   else if (!twoColumns) {
                     content = ListView.builder(
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -145,11 +146,14 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
                         );
                       },
                     );
-                  } else {
+                  }
+                  // ---- Data (Grid) ----
+                  else {
                     content = GridView.builder(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       itemCount: p.items.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 16,
@@ -173,6 +177,7 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
                       },
                     );
                   }
+
                   return Center(
                     child: ConstrainedBox(
                       constraints: BoxConstraints(maxWidth: maxWidth),
@@ -189,11 +194,6 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
   }
 }
 
-/// Reusable feedback summary card used by both ListView and GridView.
-///
-/// Important:
-/// - UI stays identical across 1-column and 2-column layouts.
-/// - Only the parent layout changes; functionality stays the same.
 class _FeedbackCard extends StatelessWidget {
   const _FeedbackCard({
     required this.serviceCategoryLabel,
@@ -214,9 +214,7 @@ class _FeedbackCard extends StatelessWidget {
     return Card(
       color: AppColors.card,
       elevation: 3.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
         child: Column(

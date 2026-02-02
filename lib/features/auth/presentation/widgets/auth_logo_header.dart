@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:juecho/common/constants/app_colors.dart';
 
-/// Common header widget for auth screens (login, signup, confirm, etc.).
+/// Shared header widget used across authentication-related pages.
 ///
-/// Shows:
-/// - The JUEcho SVG logo.
-/// - A main [title] text.
-/// - Optional [subtitle] (e.g., instructions).
-/// - Configurable vertical spacing using [spacingBelowLogo] and [spacingBelowTitle].
+/// Displays:
+/// - Application SVG logo
+/// - Page title
+/// - Optional subtitle (instructions, context, etc.)
+///
+/// Layout control:
+/// - spacingBelowLogo controls distance between logo and title
+/// - spacingBelowTitle controls distance below title/subtitle block
 class AuthLogoHeader extends StatelessWidget {
   const AuthLogoHeader({
     super.key,
@@ -18,29 +21,20 @@ class AuthLogoHeader extends StatelessWidget {
     this.spacingBelowTitle = 24,
   });
 
-  /// Main title text (e.g. "Sign in", "Sign up", "Confirm your email").
   final String title;
-
-  /// Optional subtitle displayed under the title (e.g. descriptive instructions).
   final String? subtitle;
-
-  /// Vertical space between the logo and the title.
   final double spacingBelowLogo;
-
-  /// Vertical space below the title (or below the subtitle if present).
   final double spacingBelowTitle;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // App logo (SVG asset) used across all auth pages.
         SvgPicture.asset(
           'assets/images/JUEcho_BGR.svg',
           height: 150,
         ),
         SizedBox(height: spacingBelowLogo),
-        // Main title text
         Text(
           title,
           style: const TextStyle(
@@ -49,7 +43,6 @@ class AuthLogoHeader extends StatelessWidget {
             color: AppColors.darkText,
           ),
         ),
-        // Optional subtitle text (only rendered if non-null)
         if (subtitle != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -61,7 +54,6 @@ class AuthLogoHeader extends StatelessWidget {
             ),
           ),
         ],
-        // Spacing before the rest of the page content (forms/buttons)
         SizedBox(height: spacingBelowTitle),
       ],
     );

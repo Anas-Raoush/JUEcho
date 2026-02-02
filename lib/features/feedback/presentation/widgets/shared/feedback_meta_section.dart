@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 
-/// Reusable meta info section for a feedback submission.
+/// Meta information section for a feedback submission.
 ///
-/// General user page:
-/// - Pass [serviceCategoryLabel] + [submittedAt] only.
+/// Display modes
+/// - General: shows category + submittedAt.
+/// - Admin: can additionally show status, urgency, and reviewer name.
 ///
-/// Admin page:
-/// - Can also pass [statusLabel], [urgencyLabel], [ownerName].
+/// Each row is rendered via the private [_MetaRow] widget to keep consistent
+/// spacing and typography.
 class FeedbackMetaSection extends StatelessWidget {
+  /// Service category label shown at the top.
   final String serviceCategoryLabel;
+
+  /// Submission date label rendered as provided by the parent.
   final String submittedAt;
 
-  /// Optional – shown only if not null.
+  /// Optional admin-only fields.
   final String? statusLabel;
   final String? urgencyLabel;
   final String? ownerName;
@@ -30,20 +35,17 @@ class FeedbackMetaSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Service category
         _MetaRow(
           label: 'Service category',
           value: serviceCategoryLabel,
         ),
         const SizedBox(height: 8),
 
-        // Submitted at
         _MetaRow(
           label: 'Submitted at',
           value: submittedAt,
         ),
 
-        // Owner (admin only, optional)
         if (ownerName != null) ...[
           const SizedBox(height: 8),
           _MetaRow(
@@ -52,7 +54,6 @@ class FeedbackMetaSection extends StatelessWidget {
           ),
         ],
 
-        // Status (admin only, optional)
         if (statusLabel != null) ...[
           const SizedBox(height: 8),
           _MetaRow(
@@ -61,7 +62,6 @@ class FeedbackMetaSection extends StatelessWidget {
           ),
         ],
 
-        // Urgency (admin only, optional)
         if (urgencyLabel != null) ...[
           const SizedBox(height: 8),
           _MetaRow(
@@ -73,8 +73,13 @@ class FeedbackMetaSection extends StatelessWidget {
     );
   }
 }
+
+/// Single meta row rendered as label on the left and value on the right.
 class _MetaRow extends StatelessWidget {
+  /// Label for the row.
   final String label;
+
+  /// Value for the row.
   final String value;
 
   const _MetaRow({

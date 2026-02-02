@@ -1,14 +1,16 @@
 import 'dart:io';
+
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart' hide AuthProvider;
 import 'package:amplify_flutter/amplify_flutter.dart' hide AuthProvider;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import 'package:juecho/common/constants/service_categories.dart';
 import 'package:juecho/common/widgets/error_message.dart';
 import 'package:juecho/common/widgets/page_title.dart';
 import 'package:juecho/features/auth/presentation/provider/auth_provider.dart';
-import 'package:juecho/features/feedback/data/feedback_repository.dart';
+import 'package:juecho/features/feedback/data/repositories/general_repositories/general_submissions_repository.dart';
 import 'package:juecho/features/feedback/presentation/widgets/general/submit_feedback_page/category_dropdown.dart';
 import 'package:juecho/features/feedback/presentation/widgets/general/submit_feedback_page/description_field.dart';
 import 'package:juecho/features/feedback/presentation/widgets/general/submit_feedback_page/rating_and_attachment_row.dart';
@@ -18,19 +20,19 @@ import 'package:juecho/features/feedback/presentation/widgets/general/submit_fee
 import 'package:juecho/features/feedback/presentation/widgets/shared/image_preview_dialog.dart';
 import 'package:juecho/features/home/presentation/widgets/general/general_scaffold_with_menu.dart';
 
+/// submit_feedback_page.dart
+///
 /// General user page: create a new feedback submission.
 ///
-/// Data source:
-/// - Uses [AuthProvider.profile] (already cached at login/bootstrap) to get userId.
-/// - Uses Cognito identityId ONLY for building the storage path.
+/// Features:
+/// - Form validation + required category
+/// - Optional image attachment using FilePicker + S3 upload
+/// - Uses AuthProvider.profile for userId, Cognito identityId for S3 path
+/// - Shows upload spinner while uploading
+/// - Responsive: center form + max width on wide screens
 ///
-/// UX:
-/// - Optional image attachment upload to S3.
-/// - Shows upload spinner while uploading.
-/// - Validates form + category selection before submission.
-///
-/// Responsive:
-/// - Centers the form and constrains width on large screens.
+/// Fix applied:
+/// - maxWidth rule order was wrong (w >= 600 would catch 900+ too).
 class SubmitFeedbackPage extends StatefulWidget {
   const SubmitFeedbackPage({super.key});
 
@@ -47,6 +49,7 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
   final _titleCtrl = TextEditingController();
   final _descriptionCtrl = TextEditingController();
   final _suggestionCtrl = TextEditingController();
+
   int _rating = 3;
 
   PlatformFile? _attachedImageFile;
@@ -87,11 +90,12 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
 
       setState(() {
         _attachedImageFile = file;
-        _attachmentKey = null;
+        _attachmentKey = null; // reset (will upload again)
       });
     } catch (e) {
       safePrint('Pick image error: $e');
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not pick image')),
       );
@@ -148,6 +152,7 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
 
   Future<void> _onSubmit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
     if (_selectedCategory == null) {
       setState(() => _error = 'Please select a service category.');
       return;
@@ -167,7 +172,6 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
     });
 
     try {
-      // identityId is needed for the storage path (S3).
       final session = await Amplify.Auth.fetchAuthSession() as CognitoAuthSession;
       final identityId = session.identityIdResult.value;
 
@@ -180,7 +184,7 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
       final description = _descriptionCtrl.text.trim();
       final suggestion = _suggestionCtrl.text.trim();
 
-      await FeedbackRepository.createSubmission(
+      await GeneralSubmissionsRepository.createSubmission(
         category: _selectedCategory!,
         rating: _rating,
         title: title.isEmpty ? null : title,
@@ -203,6 +207,7 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
     } catch (e) {
       safePrint('Submit feedback error: $e');
       if (!mounted) return;
+
       setState(() {
         _error = 'Could not submit feedback. Please try again later.';
       });
@@ -213,9 +218,13 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Responsive rules: center + max width.
+    // Responsive: center + max width.
     final w = MediaQuery.of(context).size.width;
-    final maxWidth = w >= 600 ? 600.0 : w >= 900 ? 900.0 : double.infinity;
+    final maxWidth = w >= 900
+        ? 900.0
+        : w >= 600
+        ? 600.0
+        : double.infinity;
 
     return GeneralScaffoldWithMenu(
       body: Center(
@@ -232,27 +241,35 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       ErrorMessage(error: _error),
+
                       CategoryDropdown(
                         selectedCategory: _selectedCategory,
-                        onChanged: (value) => setState(() => _selectedCategory = value),
+                        onChanged: (value) =>
+                            setState(() => _selectedCategory = value),
                         decoration: _inputDecoration('Select service category'),
                       ),
                       const SizedBox(height: 16),
+
                       TitleField(
                         titleCtrl: _titleCtrl,
                         decoration: _inputDecoration('Title'),
                       ),
                       const SizedBox(height: 16),
+
                       DescriptionField(
                         decoration: _inputDecoration('Describe your experience'),
                         descriptionCtrl: _descriptionCtrl,
                       ),
                       const SizedBox(height: 16),
+
                       SuggestionField(
                         suggestionCtrl: _suggestionCtrl,
-                        decoration: _inputDecoration('Any suggestion for improvement? (optional)'),
+                        decoration: _inputDecoration(
+                          'Any suggestion for improvement? (optional)',
+                        ),
                       ),
                       const SizedBox(height: 24),
+
                       RatingAndAttachmentRow(
                         rating: _rating,
                         onRatingChanged: (value) => setState(() => _rating = value),
@@ -263,6 +280,7 @@ class _SubmitFeedbackPageState extends State<SubmitFeedbackPage> {
                         onRemoveImagePressed: _onRemoveImagePressed,
                       ),
                       const SizedBox(height: 32),
+
                       SubmitButton(
                         isSubmitting: _isSubmitting,
                         onPressed: _onSubmit,

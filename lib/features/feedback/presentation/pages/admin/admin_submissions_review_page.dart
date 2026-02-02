@@ -11,19 +11,19 @@ import 'package:juecho/features/feedback/presentation/widgets/admin/admin_submis
 import 'package:juecho/features/feedback/presentation/widgets/shared/card_data.dart';
 import 'package:juecho/features/home/presentation/widgets/admin/admin_scaffold_with_menu.dart';
 
-/// Admin page: Review all submissions (with sorting + filters).
+/// Admin screen for reviewing ALL non-new submissions (Status != SUBMITTED).
 ///
-/// Responsibilities:
-/// - Initialize [AdminReviewSubmissionsProvider] once after first frame.
-/// - Render sorting + filters (AdminSubmissionsSortBar).
-/// - Show loading / error / empty states.
-/// - Render submissions as:
-///   - 1-column ListView on narrow screens
-///   - 2-column GridView on wide screens
+/// Features:
+/// - Provider init after first frame
+/// - Pull-to-refresh
+/// - Infinite scroll (loadMore near bottom)
+/// - Sorting + backend filtering (status/category/rating/urgency)
+/// - Responsive layout:
+///   - < 900px: ListView
+///   - >= 900px: 2-column GridView
 ///
-/// Responsive design goals:
-/// - Avoid stretched content on desktop by centering and constraining max width.
-/// - Fix card overflow by giving grid items a stable height (mainAxisExtent).
+/// Notes:
+/// - Uses mainAxisExtent in grid to avoid card overflow height issues.
 class AdminSubmissionsReviewPage extends StatefulWidget {
   const AdminSubmissionsReviewPage({super.key});
 
@@ -41,26 +41,28 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
   final _scrollCtrl = ScrollController();
 
   @override
-  void dispose() {
-    _scrollCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   void initState() {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+
       final prov = context.read<AdminReviewSubmissionsProvider>();
       prov.init();
 
       _scrollCtrl.addListener(() {
-        if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
+        final pos = _scrollCtrl.position;
+        if (pos.pixels >= pos.maxScrollExtent - 200) {
           prov.loadMore();
         }
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh(BuildContext context) async {
@@ -89,123 +91,147 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
         builder: (context, constraints) {
           final screenWidth = constraints.maxWidth;
           final maxWidth = _maxWidthFor(screenWidth);
-
-          // If the page is wide enough, show 2 cards per row.
           final bool twoColumns = screenWidth >= 900;
 
           return Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const PageTitle(title: 'Submissions Review', isPar: true),
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const PageTitle(title: 'Submissions Review', isPar: true),
 
-                    AdminSubmissionsSortBar(
-                      sortKey: _sortKey,
-                      onSortChanged: (k) => setState(() => _sortKey = k),
-                      filter: _filter,
-                      onFilterChanged: (newFilter) async {
-                        setState(() => _filter = newFilter);
-                        await context.read<AdminReviewSubmissionsProvider>().applyBackendFilter(newFilter);
-                      },
-                    ),
+                  AdminSubmissionsSortBar(
+                    sortKey: _sortKey,
+                    onSortChanged: (k) => setState(() => _sortKey = k),
+                    filter: _filter,
+                    onFilterChanged: (newFilter) async {
+                      setState(() => _filter = newFilter);
+                      await context
+                          .read<AdminReviewSubmissionsProvider>()
+                          .applyBackendFilter(newFilter);
+                    },
+                  ),
 
-                    const SizedBox(height: 8),
+                  const SizedBox(height: 8),
 
-                    Expanded(
-                      child: Consumer<AdminReviewSubmissionsProvider>(
-                        builder: (context, p, _) {
-                          // ---- Loading state ----
-                          if (p.isLoading && p.items.isEmpty) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
+                  Expanded(
+                    child: Consumer<AdminReviewSubmissionsProvider>(
+                      builder: (context, p, _) {
+                        if (p.isLoading && p.items.isEmpty) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
 
-                          // ---- Error state ----
-                          if (p.error != null && p.items.isEmpty) {
-                            return RefreshIndicator(
-                              onRefresh: () => _refresh(context),
-                              child: ListView(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 12,
-                                ),
-                                children: const [
-                                  SizedBox(height: 40),
-                                  Center(
-                                    child: Text(
-                                      'Could not load submissions. Pull to retry',
-                                      style: TextStyle(color: AppColors.red),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-                          final sorted = [...p.items];
-                          sortSubmissions(sorted, _sortKey);
-
-                          // ---- Empty state ----
-                          if (sorted.isEmpty) {
-                            return RefreshIndicator(
-                              onRefresh: () => _refresh(context),
-                              child: ListView(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 12,
-                                ),
-                                children: const [
-                                  SizedBox(height: 40),
-                                  Center(
-                                    child: Text(
-                                      'No submissions to review at the moment.',
-                                      style: TextStyle(color: AppColors.gray),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-
-                          // ---- Content ----
+                        if (p.error != null && p.items.isEmpty) {
                           return RefreshIndicator(
                             onRefresh: () => _refresh(context),
-                            child: twoColumns
-                                ? GridView.builder(
-                              controller: _scrollCtrl,
+                            child: ListView(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
-                                vertical: 8,
+                                vertical: 12,
                               ),
-                              itemCount: sorted.length,
-                              gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                mainAxisExtent: 360,
+                              children: const [
+                                SizedBox(height: 40),
+                                Center(
+                                  child: Text(
+                                    'Could not load submissions. Pull to retry',
+                                    style: TextStyle(color: AppColors.red),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        final sorted = [...p.items];
+                        sortSubmissions(sorted, _sortKey);
+
+                        if (sorted.isEmpty) {
+                          return RefreshIndicator(
+                            onRefresh: () => _refresh(context),
+                            child: ListView(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 12,
                               ),
-                              itemBuilder: (context, index) {
-                                final s = sorted[index];
-                                return _SubmissionCard(
-                                  serviceCategoryLabel:
-                                  s.serviceCategory.label,
+                              children: const [
+                                SizedBox(height: 40),
+                                Center(
+                                  child: Text(
+                                    'No submissions to review at the moment.',
+                                    style: TextStyle(color: AppColors.gray),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return RefreshIndicator(
+                          onRefresh: () => _refresh(context),
+                          child: twoColumns
+                              ? GridView.builder(
+                            controller: _scrollCtrl,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
+                            itemCount: sorted.length,
+                            gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                              mainAxisExtent: 360,
+                            ),
+                            itemBuilder: (context, index) {
+                              final s = sorted[index];
+                              return _SubmissionCard(
+                                serviceCategoryLabel: s.serviceCategory.label,
+                                title: s.title ?? '-',
+                                ratingLabel: s.rating.toString(),
+                                urgencyLabel: s.urgency?.toString() ?? '-',
+                                statusLabel: s.status.label,
+                                respondedAdminLabel: () {
+                                  final name = (s.updatedByName ?? '').trim();
+                                  return name.isEmpty ? '-' : name;
+                                }(),
+                                respondedAtLabel:
+                                _formatDate(s.updatedAt ?? s.createdAt),
+                                onOpen: () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    AdminSingleSubmissionPage.routeName,
+                                    arguments: s.id,
+                                  );
+                                },
+                              );
+                            },
+                          )
+                              : ListView.builder(
+                            controller: _scrollCtrl,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
+                            itemCount: sorted.length,
+                            itemBuilder: (context, index) {
+                              final s = sorted[index];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _SubmissionCard(
+                                  serviceCategoryLabel: s.serviceCategory.label,
                                   title: s.title ?? '-',
                                   ratingLabel: s.rating.toString(),
-                                  urgencyLabel:
-                                  s.urgency?.toString() ?? '-',
+                                  urgencyLabel: s.urgency?.toString() ?? '-',
                                   statusLabel: s.status.label,
-                                  respondedAdminLabel: (() {
-                                    final name =
-                                    (s.updatedByName ?? '').trim();
+                                  respondedAdminLabel: () {
+                                    final name = (s.updatedByName ?? '').trim();
                                     return name.isEmpty ? '-' : name;
-                                  })(),
-                                  respondedAtLabel: _formatDate(
-                                    s.updatedAt ?? s.createdAt,
-                                  ),
+                                  }(),
+                                  respondedAtLabel:
+                                  _formatDate(s.updatedAt ?? s.createdAt),
                                   onOpen: () {
                                     Navigator.pushNamed(
                                       context,
@@ -213,55 +239,17 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
                                       arguments: s.id,
                                     );
                                   },
-                                );
-                              },
-                            )
-                                : ListView.builder(
-                              controller: _scrollCtrl,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 8,
-                              ),
-                              itemCount: sorted.length,
-                              itemBuilder: (context, index) {
-                                final s = sorted[index];
-                                return Padding(
-                                  padding:
-                                  const EdgeInsets.only(bottom: 12),
-                                  child: _SubmissionCard(
-                                    serviceCategoryLabel:
-                                    s.serviceCategory.label,
-                                    title: s.title ?? '-',
-                                    ratingLabel: s.rating.toString(),
-                                    urgencyLabel:
-                                    s.urgency?.toString() ?? '-',
-                                    statusLabel: s.status.label,
-                                    respondedAdminLabel: (() {
-                                      final name =
-                                      (s.updatedByName ?? '').trim();
-                                      return name.isEmpty ? '-' : name;
-                                    })(),
-                                    respondedAtLabel: _formatDate(
-                                      s.updatedAt ?? s.createdAt,
-                                    ),
-                                    onOpen: () {
-                                      Navigator.pushNamed(
-                                        context,
-                                        AdminSingleSubmissionPage.routeName,
-                                        arguments: s.id,
-                                      );
-                                    },
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
                     ),
-                  ],
-                ),
-              )
+                  ),
+                ],
+              ),
+            ),
           );
         },
       ),
@@ -269,11 +257,6 @@ class _AdminSubmissionsReviewPageState extends State<AdminSubmissionsReviewPage>
   }
 }
 
-/// A single submission summary card.
-///
-/// Kept as a separate widget so it can be reused for:
-/// - ListView (1 column)
-/// - GridView (2 columns)
 class _SubmissionCard extends StatelessWidget {
   const _SubmissionCard({
     required this.serviceCategoryLabel,
@@ -300,9 +283,7 @@ class _SubmissionCard extends StatelessWidget {
     return Card(
       color: AppColors.card,
       elevation: 3.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
         child: Column(
@@ -352,20 +333,17 @@ class _SubmissionCard extends StatelessWidget {
               lastItem: true,
             ),
             const SizedBox(height: 10),
-
-
-              ElevatedButton(
-                onPressed: onOpen,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: AppColors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+            ElevatedButton(
+              onPressed: onOpen,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text('Full information or reply'),
               ),
-
+              child: const Text('Full information or reply'),
+            ),
           ],
         ),
       ),

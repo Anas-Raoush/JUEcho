@@ -10,7 +10,12 @@ import 'package:juecho/features/auth/presentation/pages/login_page.dart';
 import 'package:juecho/features/auth/presentation/provider/auth_provider.dart';
 import 'package:juecho/features/auth/presentation/widgets/auth_logo_header.dart';
 
-/// Arguments object used when navigating to ConfirmCodePage.
+/// Navigation payload for ConfirmCodePage.
+///
+/// This object keeps the confirmation flow self-contained by carrying:
+/// - email: Cognito username (also used to read PendingUser if needed)
+/// - password: used to create an authenticated session during profile creation
+/// - firstName/lastName: optional; can be used directly instead of querying PendingUser
 class ConfirmCodeArgs {
   final String email;
   final String password;
@@ -25,15 +30,20 @@ class ConfirmCodeArgs {
   });
 }
 
-/// Screen responsible for:
-/// - Entering the verification code sent by Cognito
-/// - Confirming sign-up
-/// - Creating the user profile in DB (Users table) via AuthProvider
-/// - Redirecting to LoginPage on success
+/// Account verification screen for Cognito sign-up confirmation.
 ///
-/// Note:
-/// - Only layout changed to responsive.
-/// - Verification logic is untouched.
+/// Responsibilities:
+/// - Collect the verification code sent to the user's email by AWS Cognito.
+/// - Confirm the sign-up (Cognito confirmSignUp).
+/// - Create the application profile record (Users table) using AuthProvider:
+///   -> confirmAndCreateProfile(email, code, password, firstName, lastName)
+/// - Redirect the user to LoginPage on success (repository signs out after profile creation).
+///
+/// Behavior:
+/// - Handles common Cognito exceptions with user-friendly messages:
+///   -> CodeMismatchException
+///   -> ExpiredCodeException
+///   -> LimitExceededException
 class ConfirmCodePage extends StatefulWidget {
   const ConfirmCodePage({super.key});
 
@@ -58,6 +68,7 @@ class _ConfirmCodePageState extends State<ConfirmCodePage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
     if (_argsInitialized) return;
 
     final routeArgs = ModalRoute.of(context)?.settings.arguments;
@@ -81,7 +92,20 @@ class _ConfirmCodePageState extends State<ConfirmCodePage> {
     super.dispose();
   }
 
-  /// Verify the confirmation code and create the user profile record.
+  /// Confirms the verification code and creates the application profile.
+  ///
+  /// Flow:
+  /// 1) Validate code input.
+  /// 2) AuthProvider.confirmAndCreateProfile(...)
+  /// 3) On success:
+  ///    -> Navigate to LoginPage (clear navigation stack)
+  ///    -> Show a completion SnackBar
+  ///
+  /// Error handling:
+  /// - CodeMismatchException -> invalid code
+  /// - ExpiredCodeException  -> code expired (resend suggested)
+  /// - LimitExceededException -> throttling / too many attempts
+  /// - AuthException -> surface Cognito message
   Future<void> _onVerify() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -131,7 +155,12 @@ class _ConfirmCodePageState extends State<ConfirmCodePage> {
     }
   }
 
-  /// Ask Cognito to resend the confirmation code.
+  /// Resends the Cognito verification code.
+  ///
+  /// Behavior:
+  /// - Disables the resend action while request is in flight.
+  /// - Shows a SnackBar confirmation on success.
+  /// - Handles throttling via LimitExceededException.
   Future<void> _onResend() async {
     setState(() {
       _isResending = true;
@@ -178,9 +207,7 @@ class _ConfirmCodePageState extends State<ConfirmCodePage> {
             spacingBelowLogo: 16,
             spacingBelowTitle: 24,
           ),
-
           ErrorMessage(error: _error),
-
           Form(
             key: _formKey,
             child: Column(
@@ -209,7 +236,6 @@ class _ConfirmCodePageState extends State<ConfirmCodePage> {
                   },
                 ),
                 const SizedBox(height: 24),
-
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -239,7 +265,6 @@ class _ConfirmCodePageState extends State<ConfirmCodePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-
                 TextButton(
                   onPressed: _isResending ? null : _onResend,
                   child: Text(

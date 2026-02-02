@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 
+/// Primary submit action button used on the feedback submission form.
+///
+/// Behavior
+/// - Disabled while [isSubmitting] is true.
+/// - Shows a spinner while submitting.
+/// - Uses full width by default via [SizedBox(width: double.infinity)].
 class SubmitButton extends StatelessWidget {
+  /// True while the parent is submitting the form.
   final bool isSubmitting;
+
+  /// Submit callback invoked when not submitting.
   final VoidCallback onPressed;
 
   const SubmitButton({

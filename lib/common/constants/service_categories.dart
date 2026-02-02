@@ -1,25 +1,21 @@
-/// Service category definitions and helpers.
+/// service_categories.dart
 ///
-/// This module provides:
-/// - [ServiceCategories] enum: strongly typed categories used across the app.
-/// - [ServiceCategoryLabel] extension: human–readable labels for UI.
-/// - [ServiceCategoryKey] extension: backend-safe keys that match the Amplify
-///   GraphQL schema enum (UPPER_SNAKE_CASE).
-/// - [ServiceCategoryParser] extension: parser to convert backend enum strings
-///   back into [ServiceCategories] values.
+/// Service categories enum and mapping helpers.
 ///
-/// Design goals:
-/// - Single source of truth for all categories to avoid string duplication.
-/// - Strong typing in Dart code instead of passing raw strings around.
-/// - Clean separation between:
-///   - what the user sees (label)
-///   - what the backend expects (key)
-/// - Easy roundtrip: enum -> key -> enum.
+/// Purpose
+/// - Defines service categories used in submissions, filters, and analytics.
+/// - Centralizes UI labels and backend keys.
+/// - Enforces strong typing across the codebase instead of raw strings.
+///
+/// Mapping strategy
+/// - [ServiceCategoryLabel] provides user-facing labels.
+/// - [ServiceCategoryKey] provides backend-safe GraphQL enum keys.
+/// - [ServiceCategoryParser] converts backend keys back into the enum.
 enum ServiceCategories {
-  /// Transportation services provided to students
+  /// Transportation services provided to students.
   studentTransportationServices,
 
-  /// On-campus or university-managed food providers
+  /// On-campus or university-managed food providers.
   foodServices,
 
   /// Health services dedicated to students (student clinic).
@@ -40,7 +36,7 @@ enum ServiceCategories {
   /// E-learning platform.
   eLearningPlatform,
 
-  /// Registration & admissions services.
+  /// Registration and admissions services.
   registrationAndAdmissionsServices,
 
   /// Jordan University Hospital related services.
@@ -61,7 +57,7 @@ enum ServiceCategories {
   /// Security and campus safety services.
   securityAndCampusSafety,
 
-  /// Maintenance and facilities management services
+  /// Maintenance and facilities management services.
   maintenanceAndFacilitiesManagement,
 
   /// Parking-related services and policies.
@@ -77,22 +73,14 @@ enum ServiceCategories {
   alumniRelationsOffice,
 }
 
-/// UI label for dropdowns, buttons, chips, etc.
+/// UI-facing label mapping for [ServiceCategories].
 ///
-/// Example:
-/// ```dart
-/// final category = ServiceCategories.foodServices;
-/// print(category.label); // "Food Services"
-/// ```
-///
-/// This keeps UI text centralized and avoids scattering hard-coded strings
-/// across widgets. If the wording needs to change, we update it once here.
+/// Intended usage
+/// - Dropdowns
+/// - Chips
+/// - Tables and cards
 extension ServiceCategoryLabel on ServiceCategories {
-  /// Human–readable label for this service category.
-  ///
-  /// Intended usage:
-  /// - Dropdown menus
-  /// - Any UI surface where the user needs to recognize the category.
+  /// Human-readable label for display in UI surfaces.
   String get label {
     switch (this) {
       case ServiceCategories.studentTransportationServices:
@@ -139,16 +127,12 @@ extension ServiceCategoryLabel on ServiceCategories {
   }
 }
 
-/// Backend key (UPPER_SNAKE_CASE) matching the Amplify GraphQL enum
-/// `ServiceCategory` (or equivalent on the backend).
-/// This isolates stringly-typed backend values to one place and allows the rest
-/// of the codebase to use the strongly-typed [ServiceCategories] enum.
+/// Backend key mapping for [ServiceCategories].
+///
+/// Notes
+/// - Keys must match GraphQL schema enum values exactly (UPPER_SNAKE_CASE).
 extension ServiceCategoryKey on ServiceCategories {
   /// Backend-safe enum key used in GraphQL operations.
-  ///
-  /// This MUST stay in sync with:
-  /// - the GraphQL schema enum definition
-  /// - any server-side switch/lookup on service category
   String get key {
     switch (this) {
       case ServiceCategories.studentTransportationServices:
@@ -195,15 +179,15 @@ extension ServiceCategoryKey on ServiceCategories {
   }
 }
 
-/// Parser: convert backend enum string -> [ServiceCategories].
+/// Parser utilities for converting backend keys into [ServiceCategories].
 ///
-/// This is essentially the inverse of [ServiceCategoryKey.key].
-///
-/// Throws:
-/// - [ArgumentError] if the key does not match any known category.
-///   This is intentional to fail fast if the backend sends an unexpected value.
+/// Failure mode
+/// - Throws [ArgumentError] on unknown keys to surface schema drift immediately.
 extension ServiceCategoryParser on ServiceCategories {
-  /// Convert a backend enum key (UPPER_SNAKE_CASE) into a [ServiceCategories] value.
+  /// Converts a GraphQL enum key (UPPER_SNAKE_CASE) into a strongly typed value.
+  ///
+  /// Throws
+  /// - [ArgumentError] when [key] does not match any known service category.
   static ServiceCategories fromKey(String key) {
     switch (key) {
       case 'STUDENT_TRANSPORTATION_SERVICES':
@@ -247,8 +231,6 @@ extension ServiceCategoryParser on ServiceCategories {
       case 'ALUMNI_RELATIONS_OFFICE':
         return ServiceCategories.alumniRelationsOffice;
       default:
-        // If we hit this case, backend and client are out of sync.
-        // Failing fast here surfaces schema drift early during development.
         throw ArgumentError('Unknown ServiceCategory key: $key');
     }
   }

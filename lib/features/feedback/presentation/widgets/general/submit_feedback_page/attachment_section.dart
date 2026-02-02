@@ -1,12 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 
+/// Attachment picker UI for the submit feedback form.
+///
+/// Responsibilities
+/// - Provides an action button for attaching/changing an image.
+/// - Shows upload progress state while an image is being uploaded.
+/// - When an image is selected, exposes:
+///   - preview action
+///   - remove action
+///
+/// This widget is intentionally UI-only.
+/// Uploading, storage keys, and file IO are handled by the parent.
 class AttachmentSection extends StatelessWidget {
+  /// True while an upload is running.
+  /// Used to disable the attach/change action and render a spinner.
   final bool isUploadingImage;
+
+  /// Selected image file (nullable if none selected).
   final PlatformFile? attachedImageFile;
+
+  /// Invoked to open the file picker.
   final VoidCallback onAttachImagePressed;
+
+  /// Invoked to preview the selected image.
   final VoidCallback onPreviewImagePressed;
+
+  /// Invoked to clear the selected image.
   final VoidCallback onRemoveImagePressed;
 
   const AttachmentSection({
@@ -20,6 +42,8 @@ class AttachmentSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasImage = attachedImageFile != null;
+
     return Column(
       children: [
         ElevatedButton(
@@ -45,11 +69,11 @@ class AttachmentSection extends StatelessWidget {
             ),
           )
               : Text(
-            attachedImageFile == null ? 'Attach Image' : 'Change Image',
+            hasImage ? 'Change Image' : 'Attach Image',
           ),
         ),
         const SizedBox(width: 8),
-        if (attachedImageFile != null) ...[
+        if (hasImage) ...[
           TextButton(
             onPressed: onPreviewImagePressed,
             child: const Text('Preview'),

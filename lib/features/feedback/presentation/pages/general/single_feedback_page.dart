@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:juecho/common/constants/service_categories.dart';
 import 'package:provider/provider.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/common/widgets/error_message.dart';
 import 'package:juecho/common/widgets/page_title.dart';
@@ -14,19 +15,22 @@ import 'package:juecho/features/feedback/presentation/widgets/shared/feedback_me
 import 'package:juecho/features/feedback/presentation/widgets/shared/feedback_rating_section.dart';
 import 'package:juecho/features/home/presentation/widgets/general/general_scaffold_with_menu.dart';
 
-/// General user page: detailed view for a single feedback submission.
+/// single_feedback_page.dart
 ///
-/// Data source:
-/// - Uses [SingleSubmissionProvider] to load + update the submission.
-/// - Provider already depends on [AuthProvider] for profile data when needed.
+/// General user page: details for ONE submission.
 ///
-/// UX:
-/// - Shows meta, content, admin replies, user replies, rating, attachments.
-/// - Prevents double sending of replies using local and provider locks.
+/// Features:
+/// - Loads submission using [SingleSubmissionProvider]
+/// - Shows meta + text + conversations + rating + attachments
+/// - Allows user:
+///   - edit/delete only if status == SUBMITTED (canEditOrDelete)
+///   - reply only after admin replied
+/// - Prevents double-send with local lock + provider lock
+/// - Responsive:
+///   - center content + maxWidth on wide screens
 ///
-/// Responsive:
-/// - The content is centered and constrained to a max width on wide screens.
-/// - No logic changes, only layout wrappers.
+/// Fix applied:
+/// - maxWidth rule order was wrong (w >= 600 would catch 900+ too).
 class SingleFeedbackPage extends StatefulWidget {
   const SingleFeedbackPage({super.key});
 
@@ -121,7 +125,6 @@ class _SingleFeedbackPageState extends State<SingleFeedbackPage> {
           final title = _titleCtrl.text.trim();
           final description = _descriptionCtrl.text.trim();
 
-          // REQUIRED FIELD VALIDATION
           if (title.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -150,7 +153,7 @@ class _SingleFeedbackPageState extends State<SingleFeedbackPage> {
               rating: _rating,
             );
 
-            if (!mounted) return;
+            if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Changes saved'),
@@ -158,7 +161,7 @@ class _SingleFeedbackPageState extends State<SingleFeedbackPage> {
               ),
             );
           } catch (_) {
-            if (!mounted) return;
+            if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Could not save changes. Please try again later'),
@@ -173,16 +176,14 @@ class _SingleFeedbackPageState extends State<SingleFeedbackPage> {
           if (!canEdit) return;
           if (_isDeleting) return;
 
-
-
-
           final confirmed =
               await showDialog<bool>(
                 context: context,
                 builder: (_) => AlertDialog(
                   title: const Text('Delete feedback'),
-                  content:
-                  const Text('Are you sure you want to delete this feedback?'),
+                  content: const Text(
+                    'Are you sure you want to delete this feedback?',
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -201,19 +202,23 @@ class _SingleFeedbackPageState extends State<SingleFeedbackPage> {
                   false;
 
           if (!confirmed) return;
+
           setState(() => _isDeleting = true);
+
           try {
             await p.deleteAsUser();
-            if (!mounted) return;
+            if (!context.mounted) return;
             Navigator.pop(context);
           } catch (_) {
-            if (!mounted) return;
+            if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Could not delete feedback. Please try again later'),
                 behavior: SnackBarBehavior.floating,
               ),
             );
+          } finally {
+            if (mounted) setState(() => _isDeleting = false);
           }
         }
 
@@ -231,7 +236,7 @@ class _SingleFeedbackPageState extends State<SingleFeedbackPage> {
           try {
             await p.sendUserReply(text);
 
-            if (!mounted) return;
+            if (!context.mounted) return;
             _userReplyCtrl.clear();
 
             ScaffoldMessenger.of(context).showSnackBar(
@@ -266,9 +271,13 @@ class _SingleFeedbackPageState extends State<SingleFeedbackPage> {
           }
         }
 
-        // Responsive rules (center + max width).
+        // Responsive: center + max width.
         final w = MediaQuery.of(context).size.width;
-        final maxWidth = w >= 600 ? 600.0 : w >= 900 ? 900.0 : double.infinity;
+        final maxWidth = w >= 900
+            ? 900.0
+            : w >= 600
+            ? 600.0
+            : double.infinity;
 
         return GeneralScaffoldWithMenu(
           body: (p.isLoading && s == null)

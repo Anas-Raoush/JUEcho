@@ -3,28 +3,37 @@ import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:juecho/features/profile/data/profile_repository.dart';
 
-/// AuthRepository is the single entry point for all authentication-related I/O:
-/// - Cognito auth flows (sign up, confirm, sign in, sign out, forgot password)
-/// - AppSync GraphQL calls to persist/load the app profile from `Users` table
-/// - Admin detection from Cognito JWT groups claim
+/// Centralized authentication and identity persistence layer.
 ///
-/// Design goals:
-/// - Keep UI layers free of Amplify/AppSync implementation details
-/// - Provide stable, predictable behavior for common edge cases (already signed in, unconfirmed user)
-/// - Prefer "best effort" for non-critical writes (PendingUser create/delete)
+/// Responsibilities:
+/// - Cognito authentication flows:
+///   -> sign up, confirm sign up, sign in, sign out
+///   -> resend confirmation code
+///   -> forgot password and confirmation
+/// - App profile persistence through AppSync GraphQL:
+///   -> create and read Users table records
+///   -> create/read/delete PendingUser records used during email confirmation
+/// - Admin role detection:
+///   -> resolves admin membership from Cognito JWT groups claim
+///
+/// Data model assumptions:
+/// - Cognito user sub is the system-wide identifier (Users.userId).
+/// - Users.role is stored for app-level usage; authorization is enforced by Cognito/AppSync rules.
+/// - Admin membership is derived from Cognito group "admin".
+///
+/// Failure strategy:
+/// - Profile creation is treated as critical (throws on failure).
+/// - PendingUser writes/deletes are best-effort (logs errors, does not block sign up).
+/// - Profile fetch failures return an empty ProfileData to keep bootstrap stable.
 class AuthRepository {
   // ==================== GraphQL documents ====================
 
-  /// Creates a row in `Users` table after Cognito confirmation.
-  /// The `userId` is the Cognito user sub (stable unique ID).
   static const _createUserMutation = r'''
   mutation CreateUser($input: CreateUserInput!) {
     createUser(input: $input) { userId }
   }
   ''';
 
-  /// Reads the user profile from `Users` table by `userId`.
-  /// Used after login and at app bootstrap to build in-memory profile.
   static const _getUserQuery = r'''
   query GetUser($userId: ID!) {
     getUser(userId: $userId) {
@@ -37,8 +46,6 @@ class AuthRepository {
   }
   ''';
 
-  /// Stores a "pending user" row before email confirmation.
-  /// This is used to preserve first/last name because Cognito signUp stores only email attribute.
   static const _createPendingUserMutation = r'''
   mutation CreatePendingUser($input: CreatePendingUserInput!) {
     createPendingUser(input: $input) {
@@ -49,8 +56,6 @@ class AuthRepository {
   }
   ''';
 
-  /// Reads pending user data (first/last name) by email.
-  /// Used in the confirmation flow if UI doesn't provide names.
   static const _getPendingUserQuery = r'''
   query GetPendingUser($email: String!) {
     getPendingUser(email: $email) {
@@ -61,8 +66,6 @@ class AuthRepository {
   }
   ''';
 
-  /// Deletes pending user row after successful profile creation.
-  /// Best effort cleanup to keep PendingUser table tidy.
   static const _deletePendingUserMutation = r'''
   mutation DeletePendingUser($input: DeletePendingUserInput!) {
     deletePendingUser(input: $input) { email }
@@ -71,15 +74,15 @@ class AuthRepository {
 
   // ==================== Session helpers ====================
 
-  /// Returns the current Cognito auth session.
-  /// Cast is safe because the configured auth plugin is Cognito.
+  /// Returns the current CognitoAuthSession.
+  /// The cast is safe when AmplifyAuthCognito is the configured auth plugin.
   static Future<CognitoAuthSession> fetchSession() async {
     final session = await Amplify.Auth.fetchAuthSession() as CognitoAuthSession;
     return session;
   }
 
-  /// Returns the current Cognito user's `sub` (unique user identifier).
-  /// This value is used as `userId` in `Users` table.
+  /// Returns the Cognito user sub for the active session.
+  /// Used as Users.userId across the data model.
   static Future<String> currentUserId() async {
     final session = await fetchSession();
     return session.userSubResult.value;
@@ -87,12 +90,14 @@ class AuthRepository {
 
   // ==================== Profile (Users table) ====================
 
-  /// Fetches the current user's profile from the `Users` table (AppSync).
+  /// Fetches the current user's profile from AppSync (Users table).
   ///
-  /// Notes:
-  /// - This method always fetches fresh data (no caching).
-  /// - If query fails, it returns a stable empty ProfileData instead of throwing.
-  ///   This prevents the UI from crashing during bootstrap and allows graceful handling.
+  /// Returns:
+  /// - ProfileData from the Users table if available
+  /// - Empty ProfileData if AppSync returns errors, null data, or missing user record
+  ///
+  /// This method is designed to keep bootstrap stable and allow the caller to
+  /// treat missing/failed profile reads as a recoverable state.
   static Future<ProfileData> fetchCurrentProfileData() async {
     final userId = await currentUserId();
 
@@ -103,7 +108,6 @@ class AuthRepository {
 
     final response = await Amplify.API.query(request: request).response;
 
-    // Defensive: if AppSync errors or null data, return stable empty profile.
     if (response.errors.isNotEmpty || response.data == null) {
       safePrint('getUser error: ${response.errors}');
       return const ProfileData(
@@ -115,7 +119,6 @@ class AuthRepository {
       );
     }
 
-    // GraphQL response is JSON string -> decode -> extract getUser.
     final decoded = jsonDecode(response.data!) as Map<String, dynamic>;
     final userJson = decoded['getUser'] as Map<String, dynamic>?;
 
@@ -134,30 +137,25 @@ class AuthRepository {
 
   // ==================== Cognito: Sign up / confirm ====================
 
-  /// Resends the Cognito sign-up confirmation code to the provided email.
   static Future<void> resendSignUpCode(String email) async {
     await Amplify.Auth.resendSignUpCode(username: email);
   }
 
-  /// Signs up a "general" user in Cognito and writes a PendingUser entry (best effort).
+  /// Signs up a general user in Cognito and persists a PendingUser row (best effort).
   ///
   /// Flow:
-  /// 1) Cognito signUp (email + password)
-  /// 2) CreatePendingUser in AppSync (API key auth), to store first/last name before confirmation
+  /// - Cognito signUp(email, password, attributes)
+  /// - createPendingUser(email, firstName, lastName) via AppSync using API key auth
   ///
-  /// Why PendingUser?
-  /// - Cognito user attributes may be limited; app profile data lives in `Users` table.
-  /// - Email confirmation may happen later; we persist names so we can create `Users` row after confirm.
-  ///
-  /// Failure behavior:
-  /// - If PendingUser creation fails, sign-up still succeeds (best effort).
+  /// PendingUser exists to preserve names before email confirmation and before the Users
+  /// record is created. This ensures the Users record can be built after confirmation
+  /// even if the confirmation happens on a different session/device.
   static Future<void> signUpGeneral({
     required String email,
     required String password,
     required String firstName,
     required String lastName,
   }) async {
-    // Create Cognito user with email attribute.
     await Amplify.Auth.signUp(
       username: email,
       password: password,
@@ -166,7 +164,6 @@ class AuthRepository {
       ),
     );
 
-    // Best-effort: create PendingUser using API key auth.
     final pendingReq = GraphQLRequest<String>(
       document: _createPendingUserMutation,
       variables: {
@@ -189,7 +186,6 @@ class AuthRepository {
     }
   }
 
-  /// Confirms a Cognito sign-up using the email confirmation code.
   static Future<void> confirmSignUp({
     required String email,
     required String code,
@@ -200,28 +196,26 @@ class AuthRepository {
     );
   }
 
-  /// Creates the final app profile in the `Users` table AFTER Cognito confirmation.
+  /// Creates a Users record after the user has confirmed their email.
   ///
-  /// Responsibilities:
-  /// 1) Ensure the user is signed in (needed for authenticated AppSync calls)
-  /// 2) Resolve first/last name:
-  ///    - Prefer the provided args
-  ///    - If empty, attempt to load from PendingUser table
-  /// 3) Create `Users` row in AppSync
-  /// 4) Delete PendingUser entry (best effort cleanup)
-  /// 5) Sign out (repo design: force user to log in after confirmation flow)
+  /// Flow:
+  /// - ensure session exists (sign in if required) -> get user sub
+  /// - resolve first/last name:
+  ///   -> prefer provided values
+  ///   -> if empty, fall back to PendingUser record
+  /// - create Users record with role = "general"
+  /// - delete PendingUser row (best effort)
+  /// - sign out (forces a clean post-confirmation sign-in flow)
   static Future<void> createProfileAfterConfirmation({
     required String email,
     required String password,
     required String firstName,
     required String lastName,
   }) async {
-    // 1) Ensure we have an authenticated session.
     final session = await _ensureSignedIn(email: email, password: password);
     final userId = session.userSubResult.value;
     final now = DateTime.now().toUtc().toIso8601String();
 
-    // 2) Resolve names (use pending record if UI didn't provide names).
     String fn = firstName.trim();
     String ln = lastName.trim();
 
@@ -233,7 +227,6 @@ class AuthRepository {
       }
     }
 
-    // 3) Create Users record.
     final createUserRequest = GraphQLRequest<String>(
       document: _createUserMutation,
       variables: {
@@ -251,12 +244,10 @@ class AuthRepository {
     final createUserResponse =
     await Amplify.API.mutate(request: createUserRequest).response;
 
-    // Hard failure: profile creation is critical for the app to function.
     if (createUserResponse.errors.isNotEmpty) {
       throw createUserResponse.errors.first;
     }
 
-    // 4) cleanup PendingUser.
     try {
       final deleteReq = GraphQLRequest<String>(
         document: _deletePendingUserMutation,
@@ -270,18 +261,16 @@ class AuthRepository {
       safePrint('deletePendingUser exception: $e');
     }
 
-    // 5) Sign out intentionally (The flow expects the user to login again).
     await Amplify.Auth.signOut();
   }
 
   // ==================== Cognito: Sign in / sign out ====================
 
-  /// Signs in using Cognito and returns a CognitoAuthSession.
+  /// Signs in with Cognito and returns an authenticated session.
   ///
   /// Behavior:
-  /// - If user is unconfirmed, throws UserNotConfirmedException
-  ///   (so UI can route to confirmation screen).
-  /// - If user is "already signed in" (stale session), signs out and retries once.
+  /// - If signIn results in confirmSignUp next step -> throws UserNotConfirmedException
+  /// - If device has a stale "already signed in" state -> sign out and retry once
   static Future<CognitoAuthSession> signIn({
     required String email,
     required String password,
@@ -292,27 +281,21 @@ class AuthRepository {
         password: password,
       );
 
-      // Success
       if (res.isSignedIn) return;
 
-      // Not completed: check next step for unconfirmed user.
       final step = res.nextStep.signInStep;
       if (step == AuthSignInStep.confirmSignUp) {
-        // Normalize the behavior so the UI can handle it consistently.
         throw UserNotConfirmedException('User not confirmed');
       }
-
-      // Other incomplete states can be treated as failure by caller.
     }
 
     try {
       await doSignIn();
-    } on NetworkException{
+    } on NetworkException {
       rethrow;
     } on AuthException catch (e) {
       final msg = e.message.toLowerCase();
 
-      // Edge case: old session exists on device.
       if (msg.contains('already signed in')) {
         await Amplify.Auth.signOut();
         await doSignIn();
@@ -324,19 +307,16 @@ class AuthRepository {
     return await fetchSession();
   }
 
-  /// Signs out from Cognito (clears local tokens/session).
   static Future<void> signOut() async {
     await Amplify.Auth.signOut();
   }
 
   // ==================== Forgot password ====================
 
-  /// Starts the Cognito reset password flow (sends OTP code).
   static Future<void> startForgotPassword(String email) async {
     await Amplify.Auth.resetPassword(username: email);
   }
 
-  /// Confirms the reset password flow using OTP code and new password.
   static Future<void> confirmForgotPassword({
     required String email,
     required String code,
@@ -351,25 +331,21 @@ class AuthRepository {
 
   // ==================== Admin group detection ====================
 
-  /// Returns true if the authenticated user belongs to Cognito group `admin`.
+  /// Determines whether the current session belongs to a user in the "admin" group.
   ///
-  /// Implementation details:
-  /// - Cognito groups are stored in the ID token payload under `cognito:groups`.
-  /// - This is used for UI routing (AdminHome vs GeneralHome).
+  /// Source of truth:
+  /// - Cognito ID token payload claim "cognito:groups"
   ///
-  /// Important:
-  /// - Backend authorization MUST still enforce admin permissions.
-  /// - UI routing is not security.
+  /// Output is intended for UI routing and role-based presentation.
+  /// Backend authorization must remain enforced by AppSync/Cognito rules.
   static bool isAdminFromSession(CognitoAuthSession session) {
     try {
       final tokens = session.userPoolTokensResult.value;
       final idToken = tokens.idToken.raw;
 
-      // JWT format: header.payload.signature
       final parts = idToken.split('.');
       if (parts.length != 3) return false;
 
-      // Decode base64url payload.
       final payloadJson = utf8.decode(
         base64Url.decode(base64Url.normalize(parts[1])),
       );
@@ -380,7 +356,6 @@ class AuthRepository {
       if (groupsClaim is List) return groupsClaim.contains('admin');
       if (groupsClaim is String) return groupsClaim.split(',').contains('admin');
 
-      // No groups -> not admin -> general (Option B)
       return false;
     } catch (e) {
       safePrint('isAdminFromSession error: $e');
@@ -391,9 +366,7 @@ class AuthRepository {
   // ==================== Private helpers ====================
 
   /// Ensures a valid signed-in session exists.
-  ///
-  /// Used by confirmation flow before creating the `Users` record.
-  /// If session does not exist, signs in with provided email/password.
+  /// Used by createProfileAfterConfirmation to guarantee authenticated AppSync access.
   static Future<CognitoAuthSession> _ensureSignedIn({
     required String email,
     required String password,
@@ -401,9 +374,7 @@ class AuthRepository {
     try {
       final session = await fetchSession();
       if (session.isSignedIn) return session;
-    } catch (_) {
-      // Ignore and attempt sign-in
-    }
+    } catch (_) {}
 
     final res = await Amplify.Auth.signIn(username: email, password: password);
     if (!res.isSignedIn) {
@@ -415,7 +386,7 @@ class AuthRepository {
     return session;
   }
 
-  /// Best-effort read of PendingUser by email.
+  /// Best-effort PendingUser lookup by email.
   /// Returns null if not found or if query fails.
   static Future<Map<String, dynamic>?> _getPendingUser(String email) async {
     try {

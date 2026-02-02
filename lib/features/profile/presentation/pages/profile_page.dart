@@ -10,8 +10,34 @@ import 'package:juecho/features/profile/data/profile_repository.dart';
 import 'package:juecho/features/profile/presentation/widgets/change_password_dialog.dart';
 import 'package:juecho/features/profile/presentation/widgets/labeled_field.dart';
 
+/// General user profile page for viewing/updating basic personal information.
+///
+/// What it shows:
+/// - First name (editable)
+/// - Last name (editable)
+/// - Email (read-only)
+/// - Buttons:
+///   - Save Changes (updates DB + local provider cache)
+///   - Change Password (opens ChangePasswordDialog)
+///
+/// Data source:
+/// - AuthProvider.profile (cached ProfileData)
+///
+/// Save flow:
+/// 1) Validate form
+/// 2) ProfileRepository.updateNames(...) updates backend record
+/// 3) AuthProvider.updateLocalNames(...) updates cached profile to instantly refresh UI
+/// 4) Show success SnackBar
+///
+/// Responsive behavior:
+/// - Uses LayoutBuilder + maxWidth constraint to avoid stretched UI on wide screens.
+/// - First/Last name become:
+///   - stacked on small widths (< 520)
+///   - two columns on normal widths
+/// - Buttons become full-width on small screens.
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
   static const routeName = '/general-profile';
 
   @override
@@ -34,6 +60,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
+    // Prefill only once when profile becomes available.
     if (_didPrefill) return;
 
     final p = context.read<AuthProvider>().profile;
@@ -54,6 +81,7 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
+  /// Width clamp to keep form readable on tablet/web.
   double _maxWidthFor(double w) {
     if (w >= 1200) return 900;
     if (w >= 900) return 820;
@@ -61,11 +89,19 @@ class _ProfilePageState extends State<ProfilePage> {
     return double.infinity;
   }
 
+  /// Slight padding reduction on very small screens.
   EdgeInsets _paddingFor(double w) {
     final horizontal = w < 380 ? 12.0 : 16.0;
     return EdgeInsets.symmetric(horizontal: horizontal, vertical: 8);
   }
 
+  /// Saves updated names.
+  ///
+  /// Steps:
+  /// 1) Validate inputs
+  /// 2) Update backend (source of truth) via ProfileRepository.updateNames
+  /// 3) Update AuthProvider cached profile via updateLocalNames for instant UI refresh
+  /// 4) Show a success SnackBar
   Future<void> _saveNames() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -78,13 +114,11 @@ class _ProfilePageState extends State<ProfilePage> {
     final lastName = _lastNameCtrl.text.trim();
 
     try {
-      // 1) DB update (source of truth)
       await ProfileRepository.updateNames(
         firstName: firstName,
         lastName: lastName,
       );
-
-      // 2) Update Provider (instant UI update across app)
+      if (!mounted) return;
       context.read<AuthProvider>().updateLocalNames(
         firstName: firstName,
         lastName: lastName,
@@ -97,7 +131,7 @@ class _ProfilePageState extends State<ProfilePage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _error = 'Could not save profile. Please try again later.');
     } finally {
@@ -105,6 +139,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  /// Opens the change password dialog.
   Future<void> _onChangePasswordPressed() async {
     await showDialog(
       context: context,
@@ -117,6 +152,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final auth = context.watch<AuthProvider>();
     final profile = auth.profile;
 
+    // If profile is null -> auth bootstrap not finished yet.
     final isLoading = profile == null;
 
     return GeneralScaffoldWithMenu(
@@ -127,10 +163,7 @@ class _ProfilePageState extends State<ProfilePage> {
           final w = constraints.maxWidth;
           final maxWidth = _maxWidthFor(w);
 
-          // breakpoint: when very small, stack first/last name
           final isSmall = w < 520;
-
-          // buttons full width on small screens
           final buttonWidth = isSmall ? double.infinity : 220.0;
 
           return Align(
@@ -144,7 +177,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     const PageTitle(title: 'Personal Information'),
 
-                    // show provider error first, then local
+                    // Prefer provider error, fallback to local.
                     ErrorMessage(error: auth.error ?? _error),
 
                     Form(
@@ -152,7 +185,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: Column(
                         children: [
                           if (isSmall) ...[
-                            // small screen: stack fields vertically
                             LabeledField(
                               label: 'First Name',
                               controller: _firstNameCtrl,
@@ -169,15 +201,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                   : null,
                             ),
                           ] else ...[
-                            // normal: two columns
                             Row(
                               children: [
                                 Expanded(
                                   child: LabeledField(
                                     label: 'First Name',
                                     controller: _firstNameCtrl,
-                                    validator: (v) =>
-                                    (v ?? '').trim().isEmpty
+                                    validator: (v) => (v ?? '')
+                                        .trim()
+                                        .isEmpty
                                         ? 'Required'
                                         : null,
                                   ),
@@ -187,8 +219,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   child: LabeledField(
                                     label: 'Last Name',
                                     controller: _lastNameCtrl,
-                                    validator: (v) =>
-                                    (v ?? '').trim().isEmpty
+                                    validator: (v) => (v ?? '')
+                                        .trim()
+                                        .isEmpty
                                         ? 'Required'
                                         : null,
                                   ),
@@ -197,6 +230,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ],
                           const SizedBox(height: 16),
+
                           LabeledField(
                             label: 'Email',
                             controller: _emailCtrl,
@@ -215,7 +249,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 padding: const EdgeInsets.symmetric(
-                                    vertical: 12),
+                                  vertical: 12,
+                                ),
                                 textStyle: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
@@ -233,7 +268,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                   : const Text('Save Changes'),
                             ),
                           ),
-
                           const SizedBox(height: 16),
 
                           SizedBox(
@@ -249,7 +283,8 @@ class _ProfilePageState extends State<ProfilePage> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 padding: const EdgeInsets.symmetric(
-                                    vertical: 12),
+                                  vertical: 12,
+                                ),
                                 textStyle: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,

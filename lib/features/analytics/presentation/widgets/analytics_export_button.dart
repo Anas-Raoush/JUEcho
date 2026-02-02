@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/features/analytics/data/analytics_repository.dart';
 
+/// Export button used on analytics screens.
+///
+/// Behavior
+/// - On press, calls [AnalyticsRepository.exportServiceReportCsv].
+/// - Shows an in-progress spinner while exporting.
+/// - Displays a SnackBar with the exported path (or a failure message).
 class AnalyticsExportButton extends StatefulWidget {
   const AnalyticsExportButton({super.key});
 
@@ -12,6 +19,7 @@ class AnalyticsExportButton extends StatefulWidget {
 class _AnalyticsExportButtonState extends State<AnalyticsExportButton> {
   bool _isExporting = false;
 
+  /// Exports the aggregated service report to a CSV file.
   Future<void> _export() async {
     if (_isExporting) return;
 
@@ -20,6 +28,7 @@ class _AnalyticsExportButtonState extends State<AnalyticsExportButton> {
     try {
       final path = await AnalyticsRepository.exportServiceReportCsv();
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Analytics exported to:\n$path'),
@@ -28,6 +37,7 @@ class _AnalyticsExportButtonState extends State<AnalyticsExportButton> {
       );
     } catch (_) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Could not export analytics. Please try again.'),

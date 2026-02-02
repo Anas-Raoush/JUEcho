@@ -3,23 +3,26 @@ import 'package:flutter/material.dart';
 import 'package:juecho/common/widgets/juecho_header.dart';
 import 'package:juecho/features/home/presentation/widgets/admin/admin_hamburger_menu.dart';
 
-/// A reusable scaffold wrapper for all ADMIN pages.
+/// AdminScaffoldWithMenu
 ///
-/// What it provides:
-/// - Standard page padding
-/// - The app header (JuechoHeader)
-/// - A slide-down hamburger overlay menu (AdminHamburgerMenu)
+/// Base scaffold wrapper for ADMIN pages.
 ///
-/// Why it exists:
-/// - Keeps every admin page consistent
-/// - Prevents copying the same header/menu animation code everywhere
+/// Provides:
+/// - SafeArea + consistent padding
+/// - Shared app header (JuechoHeader)
+/// - Slide-down overlay menu (AdminHamburgerMenu)
+///
+/// Design:
+/// - The menu is rendered in a Stack above the content.
+/// - The overlay includes a dimmed background and a SlideTransition.
+/// - Menu visibility and animation are driven by a single AnimationController.
 class AdminScaffoldWithMenu extends StatefulWidget {
   const AdminScaffoldWithMenu({
     super.key,
     required this.body,
   });
 
-  /// The page content below the header.
+  /// Page-specific content rendered below the shared header.
   final Widget body;
 
   @override
@@ -28,10 +31,10 @@ class AdminScaffoldWithMenu extends StatefulWidget {
 
 class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
     with SingleTickerProviderStateMixin {
-  /// Controls opening/closing the top overlay menu animation.
+  /// Drives the open/close animation for the overlay menu.
   late final AnimationController _menuController;
 
-  /// Moves the menu from off-screen (top) into view.
+  /// Slide animation that moves the menu from above the screen into view.
   late final Animation<Offset> _menuSlide;
 
   @override
@@ -44,8 +47,8 @@ class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
     );
 
     _menuSlide = Tween<Offset>(
-      begin: const Offset(0, -1), // off-screen
-      end: const Offset(0, 0),    // in-place
+      begin: const Offset(0, -1),
+      end: const Offset(0, 0),
     ).animate(
       CurvedAnimation(
         parent: _menuController,
@@ -60,7 +63,14 @@ class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
     super.dispose();
   }
 
-  /// Toggles the menu open/close.
+  /// Toggles the overlay menu.
+  ///
+  /// Open states:
+  /// - AnimationStatus.forward
+  /// - AnimationStatus.completed
+  ///
+  /// Close state:
+  /// - AnimationStatus.dismissed
   void _toggleMenu() {
     final isOpen = _menuController.status == AnimationStatus.completed ||
         _menuController.status == AnimationStatus.forward;
@@ -79,32 +89,25 @@ class _AdminScaffoldWithMenuState extends State<AdminScaffoldWithMenu>
       body: SafeArea(
         child: Stack(
           children: [
-            // ---------- MAIN CONTENT ----------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  /// Header includes the burger icon
                   JuechoHeader(onMenuTap: _toggleMenu),
-
-                  /// Page-specific body
                   Expanded(child: widget.body),
                 ],
               ),
             ),
 
-            // ---------- SLIDE-DOWN MENU OVERLAY ----------
             AnimatedBuilder(
               animation: _menuController,
               builder: (context, child) {
-                // Fully closed -> don't render overlay at all.
                 if (_menuController.value == 0) return const SizedBox.shrink();
 
                 return IgnorePointer(
                   ignoring: _menuController.value == 0,
                   child: Container(
-                    // Dimmed background
                     color: Colors.black.withValues(alpha: 0.12),
                     child: Align(
                       alignment: Alignment.topCenter,

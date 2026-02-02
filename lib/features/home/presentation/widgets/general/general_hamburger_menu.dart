@@ -1,5 +1,6 @@
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/features/auth/data/auth_repository.dart';
 import 'package:juecho/features/auth/presentation/pages/login_page.dart';
@@ -8,25 +9,30 @@ import 'package:juecho/features/home/presentation/widgets/shared/menu_item.dart'
 import 'package:juecho/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:juecho/features/profile/presentation/pages/profile_page.dart';
 
-/// Top overlay hamburger menu for General users.
+/// GeneralHamburgerMenu
 ///
-/// What it does:
-/// - Shows quick navigation actions:
-///   Notifications, Home, Profile, Sign out.
-/// - Closes itself via [closeMenu] before navigating.
-/// - Uses `pushNamedAndRemoveUntil` for Home and Sign out to reset navigation stack.
+/// Slide-down overlay menu content for GENERAL users.
 ///
-/// Responsive behavior:
-/// - Uses [LayoutBuilder] to constrain width on large screens.
-/// - Adjusts internal layout:
-///   - Narrow widths: items wrap into 2 rows (Wrap) so they don't squeeze.
-///   - Wide widths: items stay in one row (Row-like) and keep spacing.
+/// Responsibilities:
+/// - Provide navigation shortcuts:
+///   -> Notifications
+///   -> Home
+///   -> Profile
+/// - Perform sign-out and reset navigation stack back to LoginPage.
+///
+/// Navigation rules:
+/// - Home uses pushNamedAndRemoveUntil to reset stack.
+/// - Sign out uses pushNamedAndRemoveUntil after clearing session.
+///
+/// Responsive layout:
+/// - Constrains maximum width on wide screens to keep the menu readable.
+/// - Uses Row layout when possible.
+/// - Switches to Wrap on narrow widths to prevent item squeezing.
 class GeneralHamburgerMenu extends StatelessWidget {
   const GeneralHamburgerMenu({super.key, required this.closeMenu});
 
+  /// Callback provided by the parent scaffold to close the overlay.
   final VoidCallback closeMenu;
-
-  // ---------- actions ----------
 
   Future<void> _handleHomeTap(BuildContext context) async {
     closeMenu();
@@ -76,8 +82,6 @@ class GeneralHamburgerMenu extends StatelessWidget {
       builder: (context, constraints) {
         final w = constraints.maxWidth;
 
-        // Constrain menu width on desktop so it doesn't become too wide.
-        // Still respects outer Stack padding/margins.
         final double maxWidth = w >= 1200
             ? 900
             : w >= 900
@@ -86,15 +90,12 @@ class GeneralHamburgerMenu extends StatelessWidget {
             ? 650
             : double.infinity;
 
-        // If the menu is narrow, use Wrap so buttons don't get squeezed.
         final bool useWrap = w < 320;
 
-        // Keep original spacing, but scale it slightly on small screens.
         final double horizontalPad = w < 380 ? 12 : 16;
         final double topMargin = 16;
         final double sideMargin = w < 380 ? 12 : 16;
 
-        // Build the items once.
         final items = <Widget>[
           MenuItem(
             icon: Icons.notifications_none_outlined,
@@ -148,14 +149,16 @@ class GeneralHamburgerMenu extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Title + close X
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const SizedBox(width: 40),
                       const Text(
                         'JUEcho',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       IconButton(
                         onPressed: closeMenu,
@@ -164,15 +167,12 @@ class GeneralHamburgerMenu extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // Actions
                   if (!useWrap)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: items,
                     )
                   else
-                  // On narrow widths: wrap into multiple rows (prevents squishing).
                     Wrap(
                       alignment: WrapAlignment.center,
                       spacing: 18,

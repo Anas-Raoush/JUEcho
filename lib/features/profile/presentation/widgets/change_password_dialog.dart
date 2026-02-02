@@ -1,8 +1,38 @@
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/features/profile/data/profile_repository.dart';
 
+/// Modal dialog allowing the signed-in user to change their Cognito password.
+///
+/// Inputs:
+/// - old password
+/// - new password
+/// - confirm new password
+///
+/// Validation:
+/// - Old password must not be empty.
+/// - New password must match local "strong password" regex.
+/// - Confirm password must match new password.
+///
+/// Submit flow:
+/// 1) Validate form
+/// 2) Call ProfileRepository.changePassword(oldPassword, newPassword)
+/// 3) On success:
+///    - close dialog
+///    - show success SnackBar
+///
+/// Error handling:
+/// - AuthNotAuthorizedException: old password incorrect
+/// - InvalidPasswordException: new password violates policy
+/// - LimitExceededException: too many attempts
+/// - Any other error: generic message
+///
+/// Responsive behavior:
+/// - Constrains width to 420 (or screen width - padding).
+/// - Constrains height to prevent overflow on smaller devices.
+/// - If extremely narrow, buttons stack vertically for better tap targets.
 class ChangePasswordDialog extends StatefulWidget {
   const ChangePasswordDialog({super.key});
 
@@ -12,6 +42,7 @@ class ChangePasswordDialog extends StatefulWidget {
 
 class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   final _formKey = GlobalKey<FormState>();
+
   final _oldCtrl = TextEditingController();
   final _newCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
@@ -27,6 +58,14 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
     super.dispose();
   }
 
+  /// Local strong-password policy check.
+  ///
+  /// Requires:
+  /// - >= 8 chars
+  /// - uppercase
+  /// - lowercase
+  /// - number
+  /// - special char
   bool _isStrongPassword(String value) {
     final regex = RegExp(
       r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)'
@@ -36,7 +75,6 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
   }
 
   Future<void> _submit() async {
-    // Validate first
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     setState(() {
@@ -54,6 +92,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
       );
 
       if (!mounted) return;
+
       Navigator.of(context).pop();
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,7 +110,8 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
             'a lowercase letter, a number, and a special character.';
       });
     } on LimitExceededException {
-      setState(() => _error = 'Too many attempts. Please wait a little while and try again.');
+      setState(() => _error =
+      'Too many attempts. Please wait a little while and try again.');
     } catch (_) {
       setState(() => _error = 'Could not change password. Please try again later.');
     } finally {
@@ -85,10 +125,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
     final w = size.width;
     final h = size.height;
 
-    // Responsive dialog width
     final dialogWidth = w < 420 ? w - 32 : 420.0;
-
-    // Responsive height (so it won't overflow)
     final dialogMaxHeight = h < 700 ? h * 0.90 : 560.0;
 
     final isVerySmall = dialogWidth < 340;
@@ -114,63 +151,71 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
               ),
               const SizedBox(height: 12),
 
-               SingleChildScrollView(
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        if (_error != null) ...[
-                          Text(
-                            _error!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: AppColors.red, fontSize: 12),
+              // Scrollable to prevent overflow.
+              SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      if (_error != null) ...[
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: AppColors.red,
+                            fontSize: 12,
                           ),
-                          const SizedBox(height: 8),
-                        ],
-                        _passwordField(
-                          controller: _oldCtrl,
-                          label: 'Enter your old password',
-                          validator: (v) {
-                            if ((v ?? '').isEmpty) return 'Please enter your old password';
-                            return null;
-                          },
                         ),
-                        const SizedBox(height: 12),
-                        _passwordField(
-                          controller: _newCtrl,
-                          label: 'Enter your new password',
-                          validator: (v) {
-                            final value = (v ?? '').trim();
-                            if (value.isEmpty) return 'Please enter a new password';
-                            if (!_isStrongPassword(value)) return 'Weak password';
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        _passwordField(
-                          controller: _confirmCtrl,
-                          label: 'Confirm your new password',
-                          validator: (v) {
-                            final value = (v ?? '').trim();
-                            if (value.isEmpty) return 'Please confirm your new password';
-                            if (value != _newCtrl.text) return 'Passwords do not match';
-                            return null;
-                          },
-                        ),
+                        const SizedBox(height: 8),
                       ],
-                    ),
+                      _passwordField(
+                        controller: _oldCtrl,
+                        label: 'Enter your old password',
+                        validator: (v) {
+                          if ((v ?? '').isEmpty) {
+                            return 'Please enter your old password';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _passwordField(
+                        controller: _newCtrl,
+                        label: 'Enter your new password',
+                        validator: (v) {
+                          final value = (v ?? '').trim();
+                          if (value.isEmpty) return 'Please enter a new password';
+                          if (!_isStrongPassword(value)) return 'Weak password';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _passwordField(
+                        controller: _confirmCtrl,
+                        label: 'Confirm your new password',
+                        validator: (v) {
+                          final value = (v ?? '').trim();
+                          if (value.isEmpty) {
+                            return 'Please confirm your new password';
+                          }
+                          if (value != _newCtrl.text) return 'Passwords do not match';
+                          return null;
+                        },
+                      ),
+                    ],
                   ),
                 ),
-
+              ),
 
               const SizedBox(height: 12),
 
-              // Buttons INSIDE content
+              // Action buttons
               if (isVerySmall) ...[
                 SizedBox(
                   width: double.infinity,
                   child: TextButton(
-                    onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                    onPressed:
+                    _isSubmitting ? null : () => Navigator.of(context).pop(),
                     child: const Text('Cancel'),
                   ),
                 ),
@@ -183,7 +228,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                       backgroundColor: AppColors.primary,
                       foregroundColor: AppColors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     child: _isSubmitting
                         ? const SizedBox(
@@ -202,7 +249,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                        onPressed: _isSubmitting
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Cancel'),
                       ),
                     ),
@@ -214,7 +263,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                           backgroundColor: AppColors.primary,
                           foregroundColor: AppColors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         child: _isSubmitting
                             ? const SizedBox(
@@ -238,6 +289,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
     );
   }
 
+  /// Shared password TextFormField builder for dialog inputs.
   Widget _passwordField({
     required TextEditingController controller,
     required String label,

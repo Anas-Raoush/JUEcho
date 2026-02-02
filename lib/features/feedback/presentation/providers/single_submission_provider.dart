@@ -1,43 +1,95 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+
 import 'package:juecho/common/constants/feedback_status_categories.dart';
 import 'package:juecho/features/auth/presentation/provider/auth_provider.dart';
-import 'package:juecho/features/feedback/data/feedback_repository.dart';
 import 'package:juecho/features/feedback/data/models/feedback_model.dart';
+import 'package:juecho/features/feedback/data/repositories/admin_repositories/admin_single_submission_actions_repository.dart';
+import 'package:juecho/features/feedback/data/repositories/general_repositories/general_single_submission_actions_repository.dart';
+import 'package:juecho/features/feedback/data/repositories/general_repositories/general_submissions_repository.dart';
+import 'package:juecho/features/feedback/data/repositories/graphql_subscriptions_repository.dart';
 
+/// Provider responsible for loading and mutating a single feedback submission.
+///
+/// Responsibilities
+/// - Loads the submission by id.
+/// - Subscribes to updates for the submission and keeps local state in sync.
+/// - Handles admin actions:
+///   - update meta (status, urgency, internal notes)
+///   - delete submission
+///   - send admin replies
+/// - Handles general user actions:
+///   - save edits (title, description, suggestion, rating)
+///   - delete submission
+///   - send user replies
+///
+/// State
+/// - [submission] is the currently loaded submission (nullable if deleted or missing).
+/// - [isLoading] indicates fetch in progress.
+/// - [isSending] indicates mutation in progress.
+/// - [error] stores the last user-facing error message.
+///
+/// Concurrency
+/// - Uses [_pendingSendKey] to prevent duplicate sends in rapid UI calls.
 class SingleSubmissionProvider extends ChangeNotifier {
+  /// Creates a provider bound to a specific submission id.
+  ///
+  /// The [auth] dependency is used to access the current user's [ProfileData]
+  /// when generating replies and admin metadata updates.
   SingleSubmissionProvider(this.id, this._auth);
 
+  /// Target submission id.
   final String id;
+
+  /// Auth state and profile provider.
   final AuthProvider _auth;
 
+  /// Currently loaded submission (nullable when not loaded, deleted, or not found).
   FeedbackSubmission? submission;
+
+  /// Indicates an initial or refresh load request is in progress.
   bool isLoading = false;
+
+  /// Indicates a mutation request is in progress.
   bool isSending = false;
+
+  /// User-facing error message for the last failed operation.
   String? error;
 
+  /// Subscription to backend updates for this submission.
   StreamSubscription<FeedbackSubmission>? _subUpdated;
 
-  /// Prevents accidental double-submit even if UI calls twice quickly.
+  /// Prevents accidental double-submit even if UI triggers twice quickly.
+  ///
+  /// Used by reply sending methods to avoid duplicate writes.
   String? _pendingSendKey;
 
+  /// Initializes provider state.
+  ///
+  /// - Loads the submission once.
+  /// - Starts a subscription stream to keep the local submission updated.
   Future<void> init() async {
     await load();
 
     _subUpdated?.cancel();
-    _subUpdated = FeedbackRepository.onSubmissionUpdatedById(id).listen((s) {
-      submission = s;
-      notifyListeners();
-    });
+    _subUpdated =
+        GraphQLSubscriptionsRepository.onSubmissionUpdatedById(id).listen((s) {
+          submission = s;
+          notifyListeners();
+        });
   }
 
+  /// Loads the submission from the backend.
+  ///
+  /// Updates:
+  /// - [isLoading], [error], [submission]
   Future<void> load() async {
     isLoading = true;
     error = null;
     notifyListeners();
 
     try {
-      submission = await FeedbackRepository.fetchSubmissionById(id);
+      submission = await GeneralSubmissionsRepository.fetchSubmissionById(id);
     } catch (_) {
       error = 'Could not load feedback details.';
     } finally {
@@ -46,6 +98,15 @@ class SingleSubmissionProvider extends ChangeNotifier {
     }
   }
 
+  /// Saves admin metadata changes for the current submission.
+  ///
+  /// Requires:
+  /// - [status] always
+  /// - [urgency] optional
+  /// - [internalNotes] optional (empty/whitespace is converted to null)
+  ///
+  /// Profile requirements:
+  /// - Requires [_auth.profile] to be available, otherwise sets [error].
   Future<void> saveAdminMeta({
     required FeedbackStatusCategories status,
     int? urgency,
@@ -66,7 +127,8 @@ class SingleSubmissionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      submission = await FeedbackRepository.updateSubmissionAsAdminMeta(
+      submission =
+      await AdminSingleSubmissionActionsRepository.updateSubmissionAsAdminMeta(
         current: current,
         status: status,
         urgency: urgency,
@@ -84,6 +146,9 @@ class SingleSubmissionProvider extends ChangeNotifier {
     }
   }
 
+  /// Deletes the current submission as an admin.
+  ///
+  /// On success, sets [submission] to null.
   Future<void> deleteAsAdmin() async {
     final current = submission;
     if (current == null) return;
@@ -93,7 +158,9 @@ class SingleSubmissionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await FeedbackRepository.deleteSubmissionAsAdmin(current);
+      await AdminSingleSubmissionActionsRepository.deleteSubmissionAsAdmin(
+        current,
+      );
       submission = null;
     } catch (_) {
       error = 'Could not delete feedback.';
@@ -104,6 +171,13 @@ class SingleSubmissionProvider extends ChangeNotifier {
     }
   }
 
+  /// Saves user-editable fields for the current submission.
+  ///
+  /// Behavior:
+  /// - Applies trimming and converts empty strings to null.
+  /// - Persists update via the general repository.
+  ///
+  /// Inputs are nullable to allow callers to pass optional updates.
   Future<void> saveUserEdits({
     required String? title,
     required String? description,
@@ -129,7 +203,8 @@ class SingleSubmissionProvider extends ChangeNotifier {
         rating: rating,
       );
 
-      submission = await FeedbackRepository.updateSubmissionAsUser(updatedLocal);
+      submission = await GeneralSingleSubmissionActionsRepository
+          .updateSubmissionAsUser(updatedLocal);
     } catch (_) {
       error = 'Could not save changes.';
       rethrow;
@@ -139,6 +214,9 @@ class SingleSubmissionProvider extends ChangeNotifier {
     }
   }
 
+  /// Deletes the current submission as the general user.
+  ///
+  /// On success, sets [submission] to null.
   Future<void> deleteAsUser() async {
     final current = submission;
     if (current == null) return;
@@ -148,7 +226,9 @@ class SingleSubmissionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await FeedbackRepository.deleteSubmissionAsUser(current);
+      await GeneralSingleSubmissionActionsRepository.deleteSubmissionAsUser(
+        current,
+      );
       submission = null;
     } catch (_) {
       error = 'Could not delete feedback.';
@@ -159,6 +239,15 @@ class SingleSubmissionProvider extends ChangeNotifier {
     }
   }
 
+  /// Sends an admin reply for the current submission.
+  ///
+  /// Flow:
+  /// - Validates message and profile availability.
+  /// - Applies a local optimistic update (adds reply locally).
+  /// - Persists the reply via backend mutation.
+  ///
+  /// Duplicate prevention:
+  /// - Uses [_pendingSendKey] and [isSending] to avoid double send.
   Future<void> sendAdminReply(String message) async {
     final base = submission;
     final profile = _auth.profile;
@@ -182,14 +271,14 @@ class SingleSubmissionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      submission = await FeedbackRepository.makeLocalAdminReply(
+      submission = await AdminSingleSubmissionActionsRepository.makeLocalAdminReply(
         current: base,
         message: trimmed,
         profile: profile,
       );
       notifyListeners();
 
-      submission = await FeedbackRepository.addAdminReply(
+      submission = await AdminSingleSubmissionActionsRepository.addAdminReply(
         current: base,
         message: trimmed,
         profile: profile,
@@ -204,6 +293,15 @@ class SingleSubmissionProvider extends ChangeNotifier {
     }
   }
 
+  /// Sends a general user reply for the current submission.
+  ///
+  /// Flow:
+  /// - Validates message and profile availability.
+  /// - Applies a local optimistic update (adds reply locally).
+  /// - Persists the reply via backend mutation.
+  ///
+  /// Duplicate prevention:
+  /// - Uses [_pendingSendKey] and [isSending] to avoid double send.
   Future<void> sendUserReply(String message) async {
     final base = submission;
     final profile = _auth.profile;
@@ -227,14 +325,14 @@ class SingleSubmissionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      submission = await FeedbackRepository.makeLocalUserReply(
+      submission = await GeneralSingleSubmissionActionsRepository.makeLocalUserReply(
         current: base,
         message: trimmed,
         profile: profile,
       );
       notifyListeners();
 
-      submission = await FeedbackRepository.addUserReply(
+      submission = await GeneralSingleSubmissionActionsRepository.addUserReply(
         current: base,
         message: trimmed,
         profile: profile,
@@ -249,6 +347,7 @@ class SingleSubmissionProvider extends ChangeNotifier {
     }
   }
 
+  /// Cancels any active subscription stream and disposes the provider.
   @override
   void dispose() {
     _subUpdated?.cancel();

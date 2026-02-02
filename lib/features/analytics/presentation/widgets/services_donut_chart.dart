@@ -1,9 +1,24 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/common/constants/service_categories.dart';
 import 'package:juecho/features/analytics/data/analytics_repository.dart';
 
+/// Donut chart for service distribution.
+///
+/// Input
+/// - [data] is expected to contain up to the top 3 services by submission count.
+///
+/// Empty state
+/// - Renders a simple message when [data] is empty.
+///
+/// Chart library
+/// - Uses fl_chart's [PieChart].
+///
+/// Notes
+/// - Colors are derived from [AppColors.primary] with varying alpha so the chart
+///   remains brand-consistent without additional palette dependencies.
 class ServicesDonutChart extends StatelessWidget {
   final List<ServiceCount> data;
 
@@ -24,9 +39,12 @@ class ServicesDonutChart extends StatelessWidget {
     }
 
     final total = data.fold<int>(0, (sum, e) => sum + e.count);
+
     final colors = List.generate(
       data.length,
-          (i) => AppColors.primary.withValues(alpha:  0.3 + 0.6 * (i / (data.length))),
+          (i) => AppColors.primary.withValues(
+        alpha: 0.3 + 0.6 * (i / (data.length)),
+      ),
     );
 
     return Column(
@@ -59,8 +77,7 @@ class ServicesDonutChart extends StatelessWidget {
             for (int i = 0; i < data.length; i++)
               _LegendItem(
                 color: colors[i],
-                label:
-                '${data[i].category.label} (${data[i].count}/$total)',
+                label: '${data[i].category.label} (${data[i].count}/$total)',
               ),
           ],
         ),
@@ -69,6 +86,7 @@ class ServicesDonutChart extends StatelessWidget {
   }
 }
 
+/// Legend item mapping a chart segment color to a readable label.
 class _LegendItem extends StatelessWidget {
   final Color color;
   final String label;

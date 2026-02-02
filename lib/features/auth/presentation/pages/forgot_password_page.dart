@@ -1,6 +1,7 @@
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/common/helper/validators.dart';
 import 'package:juecho/common/widgets/error_message.dart';
@@ -8,15 +9,16 @@ import 'package:juecho/features/auth/presentation/widgets/responsive_scaffold.da
 import 'package:juecho/features/auth/presentation/provider/auth_provider.dart';
 import 'package:juecho/features/auth/presentation/widgets/auth_logo_header.dart';
 
-/// Screen allowing users to reset their password using AWS Cognito.
+/// Password reset screen backed by AWS Cognito.
 ///
-/// Flow:
-/// 1) Email -> Send code (resetPassword)
-/// 2) Code + new password -> Confirm (confirmResetPassword)
+/// Two-step flow:
+/// 1) Email -> request reset code (AuthProvider.startForgotPassword)
+/// 2) Code + new password -> confirm reset (AuthProvider.confirmForgotPassword)
 ///
-/// Note:
-/// - Only layout changed to responsive.
-/// - Functionality/logic is untouched.
+/// UX behavior:
+/// - After a code is sent, the UI expands to show code + new password fields.
+/// - Email input is disabled in step 2 to keep the flow consistent.
+/// - Common Cognito errors are mapped into user-friendly messages.
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
 
@@ -45,7 +47,14 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     super.dispose();
   }
 
-  /// Step 1: Request Cognito to send a reset code.
+  /// Step 1: Sends a reset code to the provided email.
+  ///
+  /// Validation:
+  /// - Uses validateJUEmail before calling the provider.
+  ///
+  /// Behavior:
+  /// - On success, transitions the screen to step 2 by setting _codeSent = true.
+  /// - Shows a non-enumerating message (does not confirm if email is registered).
   Future<void> _sendCode() async {
     final emailError = validateJUEmail(_emailCtrl.text.trim());
     if (emailError != null) {
@@ -59,7 +68,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     });
 
     try {
-      await context.read<AuthProvider>().startForgotPassword(_emailCtrl.text.trim());
+      await context
+          .read<AuthProvider>()
+          .startForgotPassword(_emailCtrl.text.trim());
 
       if (!mounted) return;
 
@@ -72,15 +83,27 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         ),
       );
     } on AuthException {
-      setState(() => _error = 'Could not send reset code. Please try again in a moment.');
+      setState(() =>
+      _error = 'Could not send reset code. Please try again in a moment.');
     } catch (_) {
-      setState(() => _error = 'Could not send reset code. Please try again later.');
+      setState(() =>
+      _error = 'Could not send reset code. Please try again later.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// Step 2: Confirm reset using code + new password.
+  /// Step 2: Confirms password reset using verification code and new password.
+  ///
+  /// Validation:
+  /// - Form validation ensures:
+  ///   -> code is 6 digits
+  ///   -> new password matches strength policy
+  ///
+  /// Error handling:
+  /// - CodeMismatchException -> incorrect/expired code
+  /// - LimitExceededException -> throttling
+  /// - Other AuthException -> password policy (generic fallback)
   Future<void> _confirmReset() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -116,7 +139,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               'Please check the latest email or tap "Send code" again.';
         });
       } else if (e is LimitExceededException) {
-        setState(() => _error = 'Too many attempts. Please wait a little while and try again.');
+        setState(() => _error =
+        'Too many attempts. Please wait a little while and try again.');
       } else {
         setState(() {
           _error = 'Password must be at least 8 characters and include an uppercase letter, '
@@ -130,7 +154,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     }
   }
 
-  /// Password strength policy check.
+  /// Enforces password policy locally before submitting to Cognito.
+  ///
+  /// Policy:
+  /// - At least 8 characters
+  /// - Contains uppercase, lowercase, digit, and special character
   bool _isStrongPassword(String value) {
     final regex = RegExp(
       r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)'
@@ -139,7 +167,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return regex.hasMatch(value);
   }
 
-  /// Ensures verification code is 6 digits.
+  /// Validates that the confirmation code is exactly 6 digits.
   bool _isNumericCode(String value) {
     final regex = RegExp(r'^\d{6}$');
     return regex.hasMatch(value);
@@ -271,7 +299,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
   }
 
-  /// Common decoration builder for all fields on this page.
+  /// Standardized InputDecoration for ForgotPasswordPage fields.
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       label: Text(label),

@@ -1,25 +1,20 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 
-/// A small reusable statistics card used in dashboard rows.
+/// StatsCard
 ///
-/// This widget displays:
-/// - a short descriptive [label]
-/// - a numeric/textual [value]
+/// Small, reusable card for displaying a single metric.
+/// Commonly used in dashboard sections for both general and admin users.
 ///
-/// Typical usage:
-/// - General user dashboard (total submissions, pending reviews, ratings)
-/// - Admin dashboard (total received, resolved issues, etc.)
+/// Displays:
+/// - label: short description (typically two lines max)
+/// - value: emphasized metric value
 ///
-/// Design characteristics:
-/// - Fixed internal padding for consistent spacing
-/// - Rounded corners and soft shadow for card-like appearance
-/// - Center-aligned text for compact layouts
-///
-/// This widget is:
-/// - Stateless
-/// - Purely presentational (no business logic)
+/// Characteristics:
+/// - Presentational only (no business logic)
 /// - Safe to rebuild frequently
+/// - Uses a subtle shadow and rounded corners for a consistent card feel
 class StatsCard extends StatelessWidget {
   const StatsCard({
     super.key,
@@ -27,23 +22,13 @@ class StatsCard extends StatelessWidget {
     required this.value,
   });
 
-  /// Short descriptive text shown at the top of the card.
-  ///
-  /// Example:
-  /// - "Total feedback submissions"
-  /// - "Pending reviews"
   final String label;
-
-  /// Main value displayed prominently in the card.
   final String value;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      // Internal spacing to keep content compact but readable
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-
-      // Card styling
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
@@ -55,13 +40,10 @@ class StatsCard extends StatelessWidget {
           ),
         ],
       ),
-
-      // Vertical layout for label + value
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Label text (secondary importance)
           Text(
             label,
             textAlign: TextAlign.center,
@@ -70,10 +52,7 @@ class StatsCard extends StatelessWidget {
               color: AppColors.gray,
             ),
           ),
-
           const SizedBox(height: 6),
-
-          // Main value (primary emphasis)
           Text(
             value,
             textAlign: TextAlign.center,

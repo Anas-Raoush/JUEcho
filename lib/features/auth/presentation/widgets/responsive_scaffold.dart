@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:juecho/common/constants/app_colors.dart';
 
-/// A reusable responsive page wrapper.
+/// A lightweight responsive wrapper for page content.
 ///
-/// Purpose:
-/// - Provides consistent horizontal padding across screen sizes
-/// - Constrains content width on tablets & desktop
-/// - Adds vertical scrolling for long pages
-/// - Supports configurable background color
-/// - Does NOT contain any business logic
+/// Provides:
+/// - SafeArea handling
+/// - Responsive padding based on screen width
+/// - Max width constraint for improved readability on larger screens
+/// - Vertical scrolling for overflow content
 ///
-/// Recommended usage:
-/// - Auth / forms pages: maxWidth = 480–560
-/// - Content pages (lists, dashboards): maxWidth = 1000–1400
+/// Typical maxWidth guidelines:
+/// - Forms/auth pages: 480–560
+/// - Content-heavy pages: 1000–1400
 class ResponsiveScaffold extends StatelessWidget {
   const ResponsiveScaffold({
     super.key,
@@ -22,22 +21,9 @@ class ResponsiveScaffold extends StatelessWidget {
     this.center = true,
   });
 
-  /// The page content.
   final Widget body;
-
-  /// Maximum width for the content on large screens.
   final double maxWidth;
-
-  /// Optional custom padding.
-  ///
-  /// If null, padding is calculated automatically
-  /// based on screen width.
   final EdgeInsets? padding;
-
-  /// Whether to horizontally center the constrained content.
-  ///
-  /// - true  → most pages
-  /// - false → full-width layouts (rare)
   final bool center;
 
   @override
@@ -49,9 +35,7 @@ class ResponsiveScaffold extends StatelessWidget {
           builder: (context, constraints) {
             final w = constraints.maxWidth;
 
-            // -------- Responsive padding rules --------
-            final EdgeInsets resolvedPadding =
-                padding ??
+            final EdgeInsets resolvedPadding = padding ??
                 EdgeInsets.symmetric(
                   horizontal: w >= 900
                       ? 32
@@ -61,18 +45,14 @@ class ResponsiveScaffold extends StatelessWidget {
                   vertical: w >= 600 ? 24 : 16,
                 );
 
-            // -------- Constrained content --------
             final Widget constrainedContent = ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxWidth),
               child: Padding(padding: resolvedPadding, child: body),
             );
 
-            // -------- Optional centering --------
-            final Widget layout = center
-                ? Center(child: constrainedContent)
-                : constrainedContent;
+            final Widget layout =
+            center ? Center(child: constrainedContent) : constrainedContent;
 
-            // -------- Vertical scrolling --------
             return Center(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),

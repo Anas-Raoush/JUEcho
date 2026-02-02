@@ -1,8 +1,25 @@
 import 'package:flutter/material.dart';
 
+/// Generic dialog for previewing an image widget.
+///
+/// Usage
+/// - Provide [title] and an [image] widget.
+/// - The [image] is clipped with rounded corners and displayed in a dialog.
+/// - Close action is provided via a single button.
+///
+/// Notes
+/// - The dialog is intentionally widget-based to support:
+///   - Image.file
+///   - Image.memory
+///   - Any custom image widget
 class ImagePreviewDialog extends StatelessWidget {
+  /// Dialog title displayed above the image.
   final String title;
+
+  /// Image widget to render in the dialog body.
   final Widget image;
+
+  /// Label for the close button.
   final String closeText;
 
   const ImagePreviewDialog({

@@ -1,94 +1,53 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
 
 /**
- * ============================================================
- * JU Echo – Data Models (Amplify Gen 2 / TypeScript schema)
- * ============================================================
+ * JU Echo data schema (Amplify Gen 2).
  *
- * This file defines the entire AppSync GraphQL schema + DynamoDB models.
- * It is the single source of truth for:
- * - Data shapes (fields + required/optional)
- * - Enums used by Flutter
- * - Authorization rules (who can read/write what)
+ * Responsibilities
+ * - Defines the AppSync GraphQL schema and DynamoDB-backed models.
+ * - Declares enums shared between backend and Flutter.
+ * - Centralizes authorization rules per model and operation.
  *
- * ------------------------------------------------------------
- * Core identifiers (IMPORTANT INVARIANTS)
- * ------------------------------------------------------------
- * Cognito `sub` is the global user identifier across the system:
- *   - User.userId             == Cognito sub
- *   - Submission.ownerId      == Cognito sub (submission owner)
- *   - Notification.recipientId== Cognito sub (notification receiver)
+ * Global identifiers (invariants)
+ * - Cognito `sub` is the canonical user identifier throughout the system:
+ *   - User.userId == Cognito sub
+ *   - Submission.ownerId == Cognito sub (submission owner)
+ *   - Notification.recipientId == Cognito sub (notification receiver)
  *
- * Cognito groups:
- *   - "general"  => normal users (students)
- *   - "admin"    => admins (staff)
+ * Cognito groups
+ * - "general" -> normal users (students)
+ * - "admin"   -> admins (staff)
  *
- * ------------------------------------------------------------
- * Domain models summary
- * ------------------------------------------------------------
- * 1) PendingUser
- *    - Temporary record created at sign-up BEFORE email confirmation.
- *    - Keyed by email (no Cognito sub yet).
- *
- * 2) User
- *    - Permanent profile record for confirmed Cognito users.
- *    - Keyed by Cognito sub (userId).
- *
- * 3) Submission
- *    - Feedback submissions created by general users.
- *    - Contains:
- *        a) Core content fields (service, title, description, rating, etc.)
- *        b) Workflow/admin fields (status, urgency, internalNotes, replies, etc.)
- *
- * 4) Notification
- *    - A persisted notification sent to a specific user.
- *    - Used in Flutter to show “Status updated”, “New reply”, etc.
- *
- * ------------------------------------------------------------
- * Authorization model (High-level)
- * ------------------------------------------------------------
- * - General users:
- *    - Can CRUD their own submissions (owner-based authorization).
- *    - Business rule "user can edit/delete only when status == SUBMITTED"
- *      is NOT enforced by schema; it must be enforced by your app logic
- *      or custom mutations/resolvers (Lambda).
- *
- * - Admins:
- *    - Can CRUD any submission.
- *    - Can CRUD notifications (for moderation + admin->user messages).
- *
- * - Public API key:
- *    - Only used for creating PendingUser at sign-up time
- *      (before userPool auth is available).
- *
- * NOTE:
- * Schema auth controls access at the API level, not business rules.
- * Business rules like “editable only while SUBMITTED” must be enforced separately.
+ * Important separation
+ * - Schema authorization controls access at the API layer.
+ * - Business rules (example: "editable only while SUBMITTED") are not enforced here
+ *   and must be enforced by application logic or custom resolvers.
  */
-
 const schema = a.schema({
   // ============================================================
-  // ENUMS (shared between backend + Flutter)
+  // ENUMS (shared between backend and client)
   // ============================================================
 
   /**
    * SubmissionStatus
-   * - Defines the lifecycle of a feedback submission.
-   * - Flutter should map these to user-friendly labels.
+   *
+   * Defines the lifecycle of a feedback submission.
+   * Client apps map these values to user-friendly labels.
    */
   SubmissionStatus: a.enum([
-    "SUBMITTED", // user submitted; waiting for admin action
-    "UNDER_REVIEW", // admin started reviewing
-    "IN_PROGRESS", // issue is being handled
-    "RESOLVED", // done/closed
-    "REJECTED", // invalid/spam/policy violation
-    "MORE_INFO_NEEDED", // admin asked the user to clarify/provide more info
+    "SUBMITTED",
+    "UNDER_REVIEW",
+    "IN_PROGRESS",
+    "RESOLVED",
+    "REJECTED",
+    "MORE_INFO_NEEDED",
   ]),
 
   /**
    * ServiceCategory
-   * - Code-friendly values.
-   * - Flutter maps these to display labels (Arabic/English).
+   *
+   * Code-friendly values representing university services.
+   * Flutter maps these to display labels (Arabic/English) in the UI layer.
    */
   ServiceCategory: a.enum([
     "STUDENT_TRANSPORTATION_SERVICES",
@@ -115,14 +74,14 @@ const schema = a.schema({
 
   /**
    * NotificationType
-   * - Optional enum to categorize notifications in the UI.
-   * - Useful for icons/colors and filtering.
+   *
+   * Categorizes notifications for UI filtering and presentation.
    */
   NotificationType: a.enum([
-    "STATUS_CHANGED", // submission status changed
-    "NEW_ADMIN_REPLY", // admin replied
-    "NEW_USER_REPLY", // user replied (useful if admins also get notified)
-    "GENERAL_INFO", // generic broadcast/info
+    "STATUS_CHANGED",
+    "NEW_ADMIN_REPLY",
+    "NEW_USER_REPLY",
+    "GENERAL_INFO",
   ]),
 
   // ============================================================
@@ -131,18 +90,20 @@ const schema = a.schema({
 
   /**
    * ReplyEntry
+   *
    * Represents a single message in a submission conversation.
    *
-   * fromRole:
-   *   - Use "GENERAL" or "ADMIN" consistently
-   *   - (Important: Keep casing consistent with Flutter parsing)
+   * Fields
+   * - fromRole: sender role, expected values:
+   *   - "GENERAL"
+   *   - "ADMIN"
+   * - byId: Cognito sub of the sender.
+   * - byName: snapshot of sender name at time of sending.
+   * - at: timestamp of the reply creation.
    *
-   * byId:
-   *   - Cognito sub of the sender
-   *
-   * byName:
-   *   - Snapshot of name at time of sending
-   *   - (So old replies still show correct names even if user edits profile later)
+   * Notes
+   * - Keep fromRole casing consistent across clients to simplify parsing.
+   * - byName is stored as a snapshot to preserve historical accuracy.
    */
   ReplyEntry: a.customType({
     fromRole: a.string().required(),
@@ -157,29 +118,28 @@ const schema = a.schema({
   // ============================================================
 
   /**
-   * PendingUser (DynamoDB: PendingUsers)
+   * PendingUser
    *
-   * Purpose:
-   * - Store user-provided names/email BEFORE Cognito confirmation.
-   * - Keyed by email because Cognito sub does not exist yet.
+   * Purpose
+   * - Temporary record created at sign-up time before email verification completes.
+   * - Keyed by email because a Cognito `sub` does not exist yet.
    *
-   * Recommended flow:
-   * 1) Sign up screen:
-   *    - Create PendingUser(email, firstName, lastName)
-   *    - Then user completes Cognito sign-up flow
+   * Recommended flow
+   * - Sign up:
+   *   - Create PendingUser(email, firstName, lastName)
+   *   - Start Cognito sign-up flow
+   * - First login after confirmation:
+   *   - Lookup PendingUser by email
+   *   - Create User using Cognito sub + PendingUser names
+   *   - Delete PendingUser
    *
-   * 2) First login after confirmation:
-   *    - Lookup PendingUser by email
-   *    - Create User using Cognito sub + PendingUser names
-   *    - Delete PendingUser
-   *
-   * Auth:
-   * - Public API key can CREATE (needed pre-auth).
-   * - Authenticated users can READ/DELETE (optional cleanup / support).
+   * Authorization
+   * - Public API key can create (needed before authentication exists).
+   * - Authenticated users can read/delete for optional cleanup workflows.
    */
   PendingUser: a
     .model({
-      email: a.string().required(), // primary key
+      email: a.string().required(),
       firstName: a.string().required(),
       lastName: a.string().required(),
     })
@@ -190,18 +150,18 @@ const schema = a.schema({
     ]),
 
   /**
-   * User (DynamoDB: Users)
+   * User
    *
-   * Purpose:
-   * - Permanent profile record for a Cognito user.
+   * Purpose
+   * - Permanent profile record for a confirmed Cognito user.
    *
-   * Fields:
-   * - userId: Cognito sub (primary key)
-   * - role: "general" or "admin" (used for UI/analytics; group membership is in Cognito)
+   * Fields
+   * - userId: Cognito sub, used as primary key.
+   * - role: stored role string for UI/analytics (Cognito groups remain the auth source).
    *
-   * Auth:
-   * - ownerDefinedIn("userId") means:
-   *    The signed-in user can read/update their own record (where userId == their sub).
+   * Authorization
+   * - Owner-based access using userId as the owner field:
+   *   - The signed-in user can read/update their own profile record.
    */
   User: a
     .model({
@@ -209,57 +169,50 @@ const schema = a.schema({
       email: a.string().required(),
       firstName: a.string().required(),
       lastName: a.string().required(),
-      role: a.string().required(), // "general" | "admin"
+      role: a.string().required(),
       createdAt: a.datetime().required(),
     })
     .identifier(["userId"])
-    .authorization((allow) => [
-      allow.ownerDefinedIn("userId"),
-    ]),
+    .authorization((allow) => [allow.ownerDefinedIn("userId")]),
 
   /**
-   * Submission (DynamoDB: Submissions)
+   * Submission
    *
    * Represents a single feedback submission created by a general user.
    *
-   * Required fields (must never be null):
+   * Required fields
    * - id, ownerId, serviceCategory, rating, status, createdAt
    *
-   * Optional fields (can be null):
+   * Optional fields
    * - title, description, suggestion, attachmentKey, urgency, internalNotes, replies,
    *   updatedById, updatedByName, respondedAt, updatedAt
    *
-   * Business rules (NOT enforced here):
-   * - General users can only edit/delete while status == SUBMITTED
-   *   -> enforce in app logic or custom resolvers (Lambda).
+   * Business rules (not enforced in schema)
+   * - Example: general users edit/delete only when status == SUBMITTED.
+   *   Enforce via application logic or custom resolvers.
    *
-   * Auth:
-   * - ownerDefinedIn("ownerId"): general users can CRUD only their own items.
-   * - allow.group("admin"): admins can CRUD any item.
+   * Authorization
+   * - Owner can CRUD their own submissions via ownerDefinedIn("ownerId").
+   * - Admin group can CRUD any submission.
    */
   Submission: a
     .model({
-      // Identity
       id: a.id().required(),
       ownerId: a.id().required(),
 
-      // Core content
       serviceCategory: a.ref("ServiceCategory").required(),
       title: a.string(),
       description: a.string(),
       suggestion: a.string(),
-      rating: a.integer().required(), // 1–5
-      attachmentKey: a.string(), // S3 object key
+      rating: a.integer().required(),
+      attachmentKey: a.string(),
 
-      // Workflow
       status: a.ref("SubmissionStatus").required(),
-      urgency: a.integer(), // 1–5 (admin set)
-      internalNotes: a.string(), // admin internal notes
+      urgency: a.integer(),
+      internalNotes: a.string(),
 
-      // Conversation
       replies: a.ref("ReplyEntry").array(),
 
-      // Admin audit fields
       updatedById: a.id(),
       updatedByName: a.string(),
       respondedAt: a.datetime(),
@@ -273,21 +226,21 @@ const schema = a.schema({
     ]),
 
   /**
-   * Notification (DynamoDB: Notifications)
+   * Notification
    *
-   * Purpose:
-   * - Persisted notifications for users.
+   * Purpose
+   * - Persisted notifications delivered to a specific user (recipientId).
    *
-   * Required:
+   * Required fields
    * - id, recipientId, type, title, body, isRead, createdAt
    *
-   * Optional:
+   * Optional fields
    * - submissionId, readAt
    *
-   * Auth:
-   * - Users can read/update/delete their own notifications.
-   * - Any authenticated user can create (supports user->admin notifications if needed).
-   * - Admins can CRUD all (moderation/admin broadcast).
+   * Authorization
+   * - Owner (recipientId) can read/update/delete their own notifications.
+   * - Any authenticated user can create (supports user->admin or system triggers).
+   * - Admin group can CRUD all notifications.
    */
   Notification: a
     .model({
@@ -309,14 +262,15 @@ const schema = a.schema({
     ]),
 });
 
-// Types for generated data client
+// Generated data client types for strongly typed frontend access.
 export type Schema = ClientSchema<typeof schema>;
 
 /**
- * Data backend definition
+ * Amplify data backend definition.
  *
- * Default authorization: Cognito User Pool (signed-in users)
- * Additional mode: API key (public) for PendingUser creation at sign-up time
+ * Authorization modes
+ * - Default: Cognito User Pool (signed-in users)
+ * - Additional: API key for PendingUser creation at sign-up time (pre-auth)
  */
 export const data = defineData({
   schema,

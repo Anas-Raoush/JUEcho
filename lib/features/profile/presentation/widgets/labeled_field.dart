@@ -1,6 +1,18 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 
+/// Small reusable form field wrapper used in the Profile page.
+///
+/// Displays:
+/// - a label above the input
+/// - a TextFormField with consistent padding/borders
+///
+/// Parameters:
+/// - [label]      : visible label text
+/// - [controller] : field controller
+/// - [validator]  : optional validator (Form validation)
+/// - [enabled]    : allow disabling for read-only fields (e.g., Email)
 class LabeledField extends StatelessWidget {
   const LabeledField({
     super.key,
@@ -38,7 +50,10 @@ class LabeledField extends StatelessWidget {
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.primary, width: 1.7),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.7,
+              ),
             ),
           ),
         ),

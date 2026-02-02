@@ -1,50 +1,48 @@
-/// Feedback status definitions and helpers.
+/// feedback_status_categories.dart
 ///
-/// This module provides:
-/// - [FeedbackStatusCategories] enum: strongly typed feedback lifecycle states
-///   shared by both the client UI and backend.
-/// - [FeedbackStatusLabel]: human-friendly labels for UI.
-/// - [FeedbackStatusKey]: GraphQL-safe UPPER_SNAKE_CASE keys expected by the backend.
-/// - [FeedbackStatusParser]: converts backend keys back into enum values.
+/// Feedback status enum and mapping helpers.
 ///
-/// Design goals:
-/// - Avoid scattering hard-coded strings throughout UI and networking code.
-/// - Maintain strict alignment with Amplify GraphQL enum:
-///     SUBMITTED
-///     UNDER_REVIEW
-///     IN_PROGRESS
-///     RESOLVED
-///     REJECTED
-///     MORE_INFO_NEEDED
-/// - Provide a reliable roundtrip: enum -> key -> enum.
-/// - Keep UI text and backend value mapping centralized and easy to update.
+/// Purpose
+/// - Defines the feedback lifecycle states used across the app.
+/// - Centralizes UI labels and backend keys to avoid string duplication.
+/// - Ensures stable round-trip mapping between client enum and GraphQL values.
+///
+/// Backend alignment
+/// - Keys must match the GraphQL schema enum values exactly:
+///   SUBMITTED
+///   UNDER_REVIEW
+///   IN_PROGRESS
+///   RESOLVED
+///   REJECTED
+///   MORE_INFO_NEEDED
 enum FeedbackStatusCategories {
-  /// Feedback has been successfully submitted and is pending review.
+  /// Feedback has been submitted and is waiting to be reviewed.
   submitted,
 
-  /// Feedback is being reviewed by admin/faculty.
+  /// Feedback is currently under admin/faculty review.
   underReview,
 
-  /// Feedback resolution is underway or has active actions in progress.
+  /// Feedback is being worked on or tracked as active.
   inProgress,
 
-  /// The feedback has been fully resolved.
+  /// Feedback has been fully resolved.
   resolved,
 
-  /// The feedback was rejected, often due to invalid content or policy issues.
+  /// Feedback has been rejected.
   rejected,
 
-  /// Additional information is needed from the user before action can proceed.
+  /// User must provide more information before progress can continue.
   moreInfoNeeded,
 }
 
-/// Human-readable text labels for displaying feedback status in UI.
-/// Used in:
-/// - List tiles
-/// - Status badges
-/// - Feedback detail screens
-/// - Filters and dropdowns
+/// UI-facing label mapping for [FeedbackStatusCategories].
+///
+/// Intended usage
+/// - List views and cards
+/// - Detail screens
+/// - Dropdowns and filters
 extension FeedbackStatusLabel on FeedbackStatusCategories {
+  /// Human-readable label for display in UI.
   String get label {
     switch (this) {
       case FeedbackStatusCategories.submitted:
@@ -63,13 +61,13 @@ extension FeedbackStatusLabel on FeedbackStatusCategories {
   }
 }
 
-/// Backend-safe enum keys for GraphQL mutations/queries.
+/// GraphQL enum key mapping for [FeedbackStatusCategories].
 ///
-/// Why UPPER_SNAKE_CASE?
-/// - AppSync GraphQL enums must match exactly.
-/// - Server code often uses uppercase enum names.
-/// - Prevents mistakes like typos or casing mismatches.
+/// Notes
+/// - Uses UPPER_SNAKE_CASE to match AppSync GraphQL enum format.
+/// - Keep these values in sync with the backend schema.
 extension FeedbackStatusKey on FeedbackStatusCategories {
+  /// Backend-safe enum key used in GraphQL operations.
   String get key {
     switch (this) {
       case FeedbackStatusCategories.submitted:
@@ -88,14 +86,15 @@ extension FeedbackStatusKey on FeedbackStatusCategories {
   }
 }
 
-/// Converts backend enum values (strings) back into strongly-typed
-/// [FeedbackStatusCategories] values.
+/// Parser utilities for converting backend keys into [FeedbackStatusCategories].
 ///
-/// This is used when reading data from GraphQL:
-/// Throws:
-/// - [ArgumentError] if the backend sends an unknown value.
-///   This ensures schema drift is caught early rather than silently failing.
+/// Failure mode
+/// - Throws [ArgumentError] for unknown keys to fail fast on schema drift.
 extension FeedbackStatusParser on FeedbackStatusCategories {
+  /// Converts a GraphQL enum key (UPPER_SNAKE_CASE) into a strongly typed value.
+  ///
+  /// Throws
+  /// - [ArgumentError] when [key] is not recognized.
   static FeedbackStatusCategories fromKey(String key) {
     switch (key) {
       case 'SUBMITTED':

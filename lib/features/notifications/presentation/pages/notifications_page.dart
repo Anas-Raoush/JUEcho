@@ -11,19 +11,24 @@ import 'package:juecho/features/home/presentation/widgets/general/general_scaffo
 import 'package:juecho/features/notifications/presentation/provider/notifications_provider.dart';
 import 'package:juecho/features/notifications/presentation/widgets/notification_card.dart';
 
-/// Notifications page (shared by admin + general).
+/// Notifications page shared by admin and general users.
 ///
-/// Responsibilities:
-/// - Initializes [NotificationsProvider] using [AuthProvider] after first frame.
-/// - Renders notifications list and allows opening the related submission.
-/// - Marks notification as read before navigating.
+/// Responsibilities
+/// - Initializes [NotificationsProvider] from [AuthProvider] after first frame.
+/// - Renders a list of notifications with pull-to-refresh.
+/// - Marks a notification as read before navigating to a submission (if linked).
 ///
-/// Responsive:
-/// - Uses [LayoutBuilder] to constrain width on large screens.
-/// - Adds proper horizontal padding so it doesn't stretch ugly.
-/// - No business logic changes.
+/// Routing
+/// - If the current user is an admin, navigation targets
+///   [AdminSingleSubmissionPage].
+/// - Otherwise navigation targets [SingleFeedbackPage].
+///
+/// Responsive layout
+/// - Constrains max width on larger screens.
+/// - Applies light horizontal padding for consistent spacing.
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
+
   static const routeName = '/notifications';
 
   @override
@@ -35,7 +40,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void initState() {
     super.initState();
 
-    // Trigger init once, AFTER first frame to avoid context issues.
+    // Initialize provider after first frame to avoid context timing issues.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
@@ -43,6 +48,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
   }
 
+  /// Max content width for common breakpoints to avoid over-stretching.
   double _maxWidthFor(double w) {
     if (w >= 1200) return 900;
     if (w >= 900) return 820;
@@ -50,11 +56,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return double.infinity;
   }
 
+  /// Horizontal padding that scales for very narrow devices.
   EdgeInsets _pagePaddingFor(double w) {
     final horizontal = w < 380 ? 12.0 : 16.0;
     return EdgeInsets.symmetric(horizontal: horizontal, vertical: 4);
   }
 
+  /// Marks [notificationId] as read and opens the related submission route.
+  ///
+  /// Navigation target depends on the current user role (admin vs general).
   Future<void> _openSubmission(
       BuildContext context,
       NotificationsProvider p,
@@ -79,10 +89,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     return Consumer<NotificationsProvider>(
       builder: (context, p, _) {
-        final bool roleReady = p.ready;
-
-        if (!roleReady) {
-          // Keep it simple while role is loading.
+        // Provider needs role/user id before choosing the correct scaffold + routes.
+        if (!p.ready) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
@@ -106,16 +114,24 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       const SizedBox(height: 8),
 
                       if (p.isLoading && p.items.isEmpty)
-                        const Expanded(child: Center(child: CircularProgressIndicator()))
+                        const Expanded(
+                          child: Center(child: CircularProgressIndicator()),
+                        )
                       else if (p.error != null && p.items.isEmpty)
                         Expanded(
                           child: Center(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(p.error!, style: const TextStyle(color: AppColors.red)),
+                                Text(
+                                  p.error!,
+                                  style: const TextStyle(color: AppColors.red),
+                                ),
                                 const SizedBox(height: 12),
-                                TextButton(onPressed: p.load, child: const Text('Retry')),
+                                TextButton(
+                                  onPressed: p.load,
+                                  child: const Text('Retry'),
+                                ),
                               ],
                             ),
                           ),
@@ -138,6 +154,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 itemCount: p.items.length,
                                 itemBuilder: (context, index) {
                                   final n = p.items[index];
+
                                   return NotificationCard(
                                     notification: n,
                                     onViewSubmission: (n.submissionId == null)
@@ -161,7 +178,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
           },
         );
 
-        return p.isAdmin ? AdminScaffoldWithMenu(body: content) : GeneralScaffoldWithMenu(body: content);
+        return p.isAdmin
+            ? AdminScaffoldWithMenu(body: content)
+            : GeneralScaffoldWithMenu(body: content);
       },
     );
   }

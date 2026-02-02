@@ -5,28 +5,30 @@ import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/features/home/presentation/provider/home_stats_provider.dart';
 import 'package:juecho/features/home/presentation/widgets/shared/stats_card.dart';
 
-/// Admin stats grid shown on the admin dashboard.
+/// AdminStatsGrid
 ///
-/// Responsive behavior:
-/// - Normal phones/tablets: 2x2 grid (two rows, two cards per row).
-/// - Very small widths: switches to a single column (one card per row)
-///   to avoid tight squeezing / ugly overflow.
+/// Dashboard stats summary for admin users.
 ///
-/// Data behavior:
-/// - Shows a loader while first loading.
-/// - Shows a retry UI if stats are null.
+/// Data source:
+/// - AdminHomeStatsProvider
+///
+/// UI states:
+/// - Initial load (stats == null and isLoading) -> loader
+/// - Not loaded / failed (stats == null) -> error + retry
+/// - Loaded -> responsive grid rendering four StatsCard widgets
+///
+/// Responsive layout:
+/// - On small widths (< _singleColumnBreakpoint): render as a single column.
+/// - Otherwise: render a 2x2 grid using two rows.
 class AdminStatsGrid extends StatelessWidget {
   const AdminStatsGrid({super.key});
 
-  /// Width at which we switch to a single-column layout.
-  /// You can tweak this if your cards still look tight.
   static const double _singleColumnBreakpoint = 340;
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AdminHomeStatsProvider>(
       builder: (context, p, _) {
-        // First-time loading (no cached stats yet)
         if (p.isLoading && p.stats == null) {
           return const SizedBox(
             height: 90,
@@ -34,7 +36,6 @@ class AdminStatsGrid extends StatelessWidget {
           );
         }
 
-        // Failed / not loaded
         if (p.stats == null) {
           return Column(
             children: [
@@ -53,7 +54,6 @@ class AdminStatsGrid extends StatelessWidget {
 
         final s = p.stats!;
 
-        // Use LayoutBuilder to decide layout based on actual available width.
         return LayoutBuilder(
           builder: (context, constraints) {
             final w = constraints.maxWidth;
@@ -78,7 +78,6 @@ class AdminStatsGrid extends StatelessWidget {
               ),
             ];
 
-            //  Small devices: one card per row (column layout)
             if (singleColumn) {
               return Column(
                 children: [
@@ -90,7 +89,6 @@ class AdminStatsGrid extends StatelessWidget {
               );
             }
 
-            //  Normal: 2x2 grid (same look you already had)
             return Column(
               children: [
                 Row(

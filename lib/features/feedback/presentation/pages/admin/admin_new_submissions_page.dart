@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:juecho/common/constants/service_categories.dart';
 import 'package:provider/provider.dart';
 
 import 'package:juecho/common/constants/app_colors.dart';
-import 'package:juecho/common/constants/service_categories.dart';
 import 'package:juecho/common/widgets/page_title.dart';
 import 'package:juecho/features/feedback/presentation/pages/admin/admin_single_submission_page.dart';
 import 'package:juecho/features/feedback/presentation/providers/submissions_provider.dart';
@@ -10,19 +10,19 @@ import 'package:juecho/features/feedback/presentation/widgets/admin/admin_submis
 import 'package:juecho/features/feedback/presentation/widgets/shared/card_data.dart';
 import 'package:juecho/features/home/presentation/widgets/admin/admin_scaffold_with_menu.dart';
 
-/// Admin page: shows "new submissions" (submitted full feedback).
+/// Admin screen: shows NEW submissions (status == SUBMITTED).
 ///
-/// Responsibilities:
-/// - Initializes [AdminNewSubmissionsProvider] after first frame.
-/// - Shows loading / error / empty states.
-/// - Sorting + filtering using [AdminSubmissionsSortBar].
-/// - Opens [AdminSingleSubmissionPage] on card tap.
+/// Features:
+/// - Initializes provider after first frame
+/// - Pull-to-refresh
+/// - Infinite scroll (loadMore near bottom)
+/// - Sorting + backend filtering (category, rating, …)
+/// - Responsive layout:
+///   - < 900px: ListView
+///   - >= 900px: 2-column GridView
 ///
-/// Responsive:
-/// - Constrains page width on large screens to avoid ugly stretching.
-/// - Uses 1-column list on narrow screens.
-/// - Uses 2-column grid on wide screens (two cards per row).
-/// - Keeps functionality identical.
+/// Notes:
+/// - Uses [AdminScaffoldWithMenu] for consistent admin header + menu overlay.
 class AdminNewSubmissionsPage extends StatefulWidget {
   const AdminNewSubmissionsPage({super.key});
 
@@ -39,27 +39,28 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
   final _scrollCtrl = ScrollController();
 
   @override
-  void dispose() {
-    _scrollCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   void initState() {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final prov = context.read<AdminNewSubmissionsProvider>();
 
+      final prov = context.read<AdminNewSubmissionsProvider>();
       prov.init();
 
       _scrollCtrl.addListener(() {
-        if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
+        final pos = _scrollCtrl.position;
+        if (pos.pixels >= pos.maxScrollExtent - 200) {
           prov.loadMore();
         }
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh(BuildContext context) async {
@@ -114,7 +115,9 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
                       filter: _filter,
                       onFilterChanged: (newFilter) async {
                         setState(() => _filter = newFilter);
-                        await context.read<AdminNewSubmissionsProvider>().applyBackendFilter(newFilter);
+                        await context
+                            .read<AdminNewSubmissionsProvider>()
+                            .applyBackendFilter(newFilter);
                       },
                       showStatusFilter: false,
                       showUrgencyFilter: false,
@@ -125,10 +128,14 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
                     Expanded(
                       child: Consumer<AdminNewSubmissionsProvider>(
                         builder: (context, p, _) {
+                          // First load
                           if (p.isLoading && p.items.isEmpty) {
-                            return const Center(child: CircularProgressIndicator());
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
                           }
 
+                          // Error with no cached items
                           if (p.error != null && p.items.isEmpty) {
                             return RefreshIndicator(
                               onRefresh: () => _refresh(context),
@@ -178,7 +185,8 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
                               itemBuilder: (context, index) {
                                 final s = sorted[index];
                                 return _AdminSubmissionCard(
-                                  serviceCategoryLabel: s.serviceCategory.label,
+                                  serviceCategoryLabel:
+                                  s.serviceCategory.label,
                                   title: s.title ?? '-',
                                   rating: s.rating.toString(),
                                   dateLabel: _formatDate(s.createdAt),
@@ -199,12 +207,15 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
                               itemBuilder: (context, index) {
                                 final s = sorted[index];
                                 return Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
+                                  padding:
+                                  const EdgeInsets.only(bottom: 12),
                                   child: _AdminSubmissionCard(
-                                    serviceCategoryLabel: s.serviceCategory.label,
+                                    serviceCategoryLabel:
+                                    s.serviceCategory.label,
                                     title: s.title ?? '-',
                                     rating: s.rating.toString(),
-                                    dateLabel: _formatDate(s.createdAt),
+                                    dateLabel:
+                                    _formatDate(s.createdAt),
                                     onOpen: () {
                                       Navigator.pushNamed(
                                         context,
@@ -231,9 +242,7 @@ class _AdminNewSubmissionsPageState extends State<AdminNewSubmissionsPage> {
   }
 }
 
-/// Reusable admin submission card (used for list + grid).
-///
-/// Functionality identical; only the parent layout changes.
+/// Reusable admin submission card (for both grid + list).
 class _AdminSubmissionCard extends StatelessWidget {
   const _AdminSubmissionCard({
     required this.serviceCategoryLabel,

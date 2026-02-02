@@ -1,5 +1,18 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
+
+/// MenuItem
+///
+/// Reusable icon+label action used by hamburger menus.
+///
+/// Interaction:
+/// - Uses InkWell to provide a Material ripple.
+/// - Allows the caller to provide onTap behavior (navigation, sign out, etc).
+///
+/// Styling:
+/// - Fixed 56x56 icon container for consistent visual rhythm.
+/// - Optional outlinedColor for "danger" actions (e.g., Sign out).
 class MenuItem extends StatelessWidget {
   const MenuItem({
     super.key,

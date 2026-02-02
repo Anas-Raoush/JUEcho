@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:juecho/common/constants/service_categories.dart';
 import 'package:provider/provider.dart';
 
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/common/constants/feedback_status_categories.dart';
-import 'package:juecho/common/constants/service_categories.dart';
 import 'package:juecho/common/widgets/error_message.dart';
 import 'package:juecho/common/widgets/page_title.dart';
 import 'package:juecho/features/feedback/data/models/feedback_model.dart';
@@ -18,23 +18,19 @@ import 'package:juecho/features/feedback/presentation/widgets/shared/feedback_me
 import 'package:juecho/features/feedback/presentation/widgets/shared/feedback_rating_section.dart';
 import 'package:juecho/features/home/presentation/widgets/admin/admin_scaffold_with_menu.dart';
 
-/// Admin page: detailed view for a single feedback submission.
+/// Admin detailed page for a single submission.
 ///
 /// Responsibilities:
-/// - Uses [SingleSubmissionProvider] for loading + updates.
-/// - Allows:
-///   - sending admin reply
-///   - saving status/urgency/notes
-///   - deleting submission
+/// - Read submission via [SingleSubmissionProvider]
+/// - Allow admin to:
+///   - send a reply
+///   - update status/urgency/notes
+///   - preview/download attachments
+///   - delete submission
 ///
-/// Responsive:
-/// - Uses [LayoutBuilder] to constrain width on large screens.
-/// - Keeps content pinned to the top (no vertical centering).
-///
-/// Validation (UI-only):
-/// - Status is required.
-/// - Urgency is required.
-/// - Save is blocked until both are selected.
+/// UI notes:
+/// - Responsive width constraints via LayoutBuilder + ConstrainedBox
+/// - UI-only validation: status + urgency must be selected before save
 class AdminSingleSubmissionPage extends StatefulWidget {
   const AdminSingleSubmissionPage({super.key});
 
@@ -46,20 +42,14 @@ class AdminSingleSubmissionPage extends StatefulWidget {
 }
 
 class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
-  // Keep controllers locally (UI state)
   final _internalNotesCtrl = TextEditingController();
   final _adminReplyCtrl = TextEditingController();
 
-  // Local selected fields (UI state)
   FeedbackStatusCategories? _selectedStatus;
   int? _selectedUrgency;
 
   bool _sendingAdminReply = false;
-
-  /// UI-only validation switch: after the first save attempt,
-  /// show inline errors + snack bar if required fields are missing.
   bool _triedSave = false;
-
   bool _isDeleting = false;
 
   @override
@@ -68,8 +58,6 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
     _adminReplyCtrl.dispose();
     super.dispose();
   }
-
-  // ---------- responsive helpers ----------
 
   double _maxWidthFor(double w) {
     if (w >= 1200) return 900;
@@ -83,8 +71,6 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
     return EdgeInsets.symmetric(horizontal: horizontal, vertical: 4);
   }
 
-  // ---------- helpers ----------
-
   String _formatDate(DateTime d) {
     final local = d.toLocal();
     final dd = local.day.toString().padLeft(2, '0');
@@ -93,10 +79,7 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
     return '$dd/$mm/$yyyy';
   }
 
-  Future<void> _previewAttachment(
-      BuildContext context,
-      FeedbackSubmission s,
-      ) async {
+  Future<void> _previewAttachment(BuildContext context, FeedbackSubmission s) async {
     if (s.attachmentKey == null) return;
     await AttachmentActions.previewAttachment(
       context: context,
@@ -104,10 +87,7 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
     );
   }
 
-  Future<void> _downloadAttachment(
-      BuildContext context,
-      FeedbackSubmission s,
-      ) async {
+  Future<void> _downloadAttachment(BuildContext context, FeedbackSubmission s) async {
     if (s.attachmentKey == null) return;
     await AttachmentActions.downloadAttachment(
       context: context,
@@ -131,7 +111,6 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
               constraints: BoxConstraints(maxWidth: maxWidth),
               child: Consumer<SingleSubmissionProvider>(
                 builder: (context, p, _) {
-                  // ---- loading state ----
                   if (p.isLoading && p.submission == null) {
                     return const Padding(
                       padding: EdgeInsets.only(top: 24),
@@ -139,7 +118,6 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
                     );
                   }
 
-                  // ---- not found ----
                   if (p.submission == null) {
                     return const Padding(
                       padding: EdgeInsets.only(top: 24),
@@ -154,23 +132,19 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
 
                   final s = p.submission!;
 
-                  // One-time init of UI fields when data arrives first time
-                  if (_selectedStatus == null) _selectedStatus = s.status;
-                  if (_selectedUrgency == null) _selectedUrgency = s.urgency;
+                  // One-time UI init
+                  _selectedStatus ??= s.status;
+                  _selectedUrgency ??= s.urgency;
 
                   if (_internalNotesCtrl.text.isEmpty &&
                       (s.internalNotes ?? '').isNotEmpty) {
                     _internalNotesCtrl.text = s.internalNotes ?? '';
                   }
 
-                  // Inline validation messages (UI-only)
-                  final statusError = (_triedSave && _selectedStatus == null)
-                      ? 'Status is required'
-                      : null;
-
-                  final urgencyError = (_triedSave && _selectedUrgency == null)
-                      ? 'Urgency is required'
-                      : null;
+                  final statusError =
+                  (_triedSave && _selectedStatus == null) ? 'Status is required' : null;
+                  final urgencyError =
+                  (_triedSave && _selectedUrgency == null) ? 'Urgency is required' : null;
 
                   Future<void> deleteSubmission() async {
                     if (_isDeleting) return;
@@ -205,10 +179,9 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
                     setState(() => _isDeleting = true);
 
                     try {
-                      // ✅ Admin delete
                       await p.deleteAsAdmin();
 
-                      if (!mounted) return;
+                      if (!context.mounted) return;
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -217,13 +190,14 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
                         ),
                       );
 
-                      Navigator.pop(context); // go back after delete
-                    } catch (e) {
-                      if (!mounted) return;
+                      Navigator.pop(context);
+                    } catch (_) {
+                      if (!context.mounted) return;
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Could not delete feedback. Please try again later'),
+                          content:
+                          Text('Could not delete feedback. Please try again later'),
                           behavior: SnackBarBehavior.floating,
                         ),
                       );
@@ -271,8 +245,7 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
                           controller: _adminReplyCtrl,
                           isSending: p.isSending || _sendingAdminReply,
                           onSend: () async {
-                            if (_sendingAdminReply) return;
-                            if (p.isSending) return;
+                            if (_sendingAdminReply || p.isSending) return;
 
                             final text = _adminReplyCtrl.text.trim();
                             if (text.isEmpty) return;
@@ -283,7 +256,7 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
                               await p.sendAdminReply(text);
                               _adminReplyCtrl.clear();
 
-                              if (!mounted) return;
+                              if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('Reply sent'),
@@ -291,9 +264,7 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
                                 ),
                               );
                             } finally {
-                              if (mounted) {
-                                setState(() => _sendingAdminReply = false);
-                              }
+                              if (mounted) setState(() => _sendingAdminReply = false);
                             }
                           },
                           inputHint: 'Write a message',
@@ -303,15 +274,10 @@ class _AdminSingleSubmissionPageState extends State<AdminSingleSubmissionPage> {
 
                         AdminFeedbackStatusUrgencyNotesSection(
                           selectedStatus: _selectedStatus,
-                          onStatusChanged: (value) {
-                            setState(() => _selectedStatus = value);
-                          },
+                          onStatusChanged: (value) => setState(() => _selectedStatus = value),
                           selectedUrgency: _selectedUrgency,
-                          onUrgencyChanged: (value) {
-                            setState(() => _selectedUrgency = value);
-                          },
+                          onUrgencyChanged: (value) => setState(() => _selectedUrgency = value),
                           internalNotesController: _internalNotesCtrl,
-
                           statusError: statusError,
                           urgencyError: urgencyError,
                         ),

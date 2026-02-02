@@ -1,8 +1,19 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/features/analytics/data/analytics_repository.dart';
 
+/// Bar chart showing feedback activity over time (monthly buckets).
+///
+/// Input
+/// - [data] is expected to be in chronological order (oldest -> newest).
+///
+/// Empty state
+/// - Renders a simple message when [data] is empty.
+///
+/// Chart library
+/// - Uses fl_chart's [BarChart].
 class FeedbackOverTimeChart extends StatelessWidget {
   final List<MonthlyCount> data;
 
@@ -24,8 +35,8 @@ class FeedbackOverTimeChart extends StatelessWidget {
 
     final maxCount =
     data.map((e) => e.count).fold<int>(0, (max, c) => c > max ? c : max);
-    final bars = <BarChartGroupData>[];
 
+    final bars = <BarChartGroupData>[];
     for (int i = 0; i < data.length; i++) {
       final m = data[i];
       bars.add(
@@ -55,17 +66,20 @@ class FeedbackOverTimeChart extends StatelessWidget {
             show: true,
             drawVerticalLine: false,
             getDrawingHorizontalLine: (_) => FlLine(
-              color: AppColors.gray.withValues(alpha:  0.2),
+              color: AppColors.gray.withValues(alpha: 0.2),
               strokeWidth: 1,
             ),
           ),
           titlesData: FlTitlesData(
-            leftTitles:
-            AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles:
-            AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles:
-            AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
@@ -75,8 +89,10 @@ class FeedbackOverTimeChart extends StatelessWidget {
                   if (index < 0 || index >= data.length) {
                     return const SizedBox.shrink();
                   }
+
                   final m = data[index];
                   final label = _monthShortLabel(m.month);
+
                   return SideTitleWidget(
                     space: 4,
                     meta: meta,
@@ -98,11 +114,13 @@ class FeedbackOverTimeChart extends StatelessWidget {
     );
   }
 
+  /// Returns short English month labels for 1..12.
   String _monthShortLabel(int month) {
     const labels = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
+
     if (month < 1 || month > 12) return '';
     return labels[month - 1];
   }

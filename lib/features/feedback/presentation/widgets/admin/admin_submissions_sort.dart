@@ -4,7 +4,7 @@ import 'package:juecho/common/constants/feedback_status_categories.dart';
 import 'package:juecho/common/constants/service_categories.dart';
 import 'package:juecho/features/feedback/data/models/feedback_model.dart';
 
-/// What field the admin is currently sorting by.
+/// Defines the available sort strategies for admin submissions.
 enum AdminSubmissionSortKey {
   newestFirst,
   oldestFirst,
@@ -16,12 +16,21 @@ enum AdminSubmissionSortKey {
   status,
 }
 
-/// Simple filter object: any null means "no filter" on that field.
+/// Backend filter model for admin pages.
+///
+/// Any null field indicates no filter applied on that dimension.
 class AdminSubmissionsFilter {
+  /// Filters by service category.
   final ServiceCategories? category;
+
+  /// Filters by submission status.
   final FeedbackStatusCategories? status;
-  final int? rating; // exact rating 1–5
-  final int? urgency; // exact urgency 1–5
+
+  /// Filters by exact rating value (1-5).
+  final int? rating;
+
+  /// Filters by exact urgency value (1-5).
+  final int? urgency;
 
   const AdminSubmissionsFilter({
     this.category,
@@ -30,6 +39,9 @@ class AdminSubmissionsFilter {
     this.urgency,
   });
 
+  /// Creates a new filter instance with selective overrides.
+  ///
+  /// Clear flags explicitly reset the respective field to null.
   AdminSubmissionsFilter copyWith({
     ServiceCategories? category,
     bool clearCategory = false,
@@ -48,15 +60,23 @@ class AdminSubmissionsFilter {
     );
   }
 
+  /// True when no filters are applied.
   bool get isEmpty =>
       category == null && status == null && rating == null && urgency == null;
 }
 
-/// In–place sort of submissions according to the selected sort key.
+/// In-place sorting for a list of submissions.
+///
+/// Sorting rules:
+/// - newest/oldest sort by createdAt
+/// - urgency sorts by urgency value, null urgency is treated as -1
+/// - rating sorts by rating int value
+/// - serviceCategory sorts by category label
+/// - status sorts by enum order in [FeedbackStatusCategories.values]
 void sortSubmissions(
-  List<FeedbackSubmission> list,
-  AdminSubmissionSortKey sortKey,
-) {
+    List<FeedbackSubmission> list,
+    AdminSubmissionSortKey sortKey,
+    ) {
   int statusOrder(FeedbackStatusCategories s) =>
       FeedbackStatusCategories.values.indexOf(s);
 
@@ -72,7 +92,6 @@ void sortSubmissions(
       break;
 
     case AdminSubmissionSortKey.highestUrgency:
-      // null urgency at the end
       list.sort((a, b) => urgencyValue(b).compareTo(urgencyValue(a)));
       break;
 
@@ -90,29 +109,48 @@ void sortSubmissions(
 
     case AdminSubmissionSortKey.serviceCategory:
       list.sort(
-        (a, b) => a.serviceCategory.label.compareTo(b.serviceCategory.label),
+            (a, b) => a.serviceCategory.label.compareTo(b.serviceCategory.label),
       );
       break;
 
     case AdminSubmissionSortKey.status:
       list.sort(
-        (a, b) => statusOrder(a.status).compareTo(statusOrder(b.status)),
+            (a, b) => statusOrder(a.status).compareTo(statusOrder(b.status)),
       );
       break;
   }
 }
 
-
-
-/// Reusable “Sort & Filter” bar for admin submissions pages.
+/// Sort and filter bar used across admin submissions pages.
+///
+/// Renders:
+/// - Sort dropdown
+/// - Optional filters:
+///   - category (always shown)
+///   - status (optional)
+///   - rating (always shown)
+///   - urgency (optional)
+///
+/// Filter behavior:
+/// - Calls [onFilterChanged] on each change.
+/// - Provides a "Clear filters" action when filters are active.
 class AdminSubmissionsSortBar extends StatelessWidget {
+  /// Current sort key selection.
   final AdminSubmissionSortKey sortKey;
+
+  /// Callback invoked on sort key change.
   final ValueChanged<AdminSubmissionSortKey> onSortChanged;
 
+  /// Current filter selection.
   final AdminSubmissionsFilter filter;
+
+  /// Callback invoked when filters are updated.
   final ValueChanged<AdminSubmissionsFilter> onFilterChanged;
 
+  /// Controls visibility of the status filter.
   final bool showStatusFilter;
+
+  /// Controls visibility of the urgency filter.
   final bool showUrgencyFilter;
 
   const AdminSubmissionsSortBar({
@@ -160,7 +198,7 @@ class AdminSubmissionsSortBar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ---------- Sort row ----------
+        // Sort row
         Row(
           children: [
             const Text(
@@ -185,10 +223,10 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                 items: AdminSubmissionSortKey.values
                     .map(
                       (k) => DropdownMenuItem(
-                        value: k,
-                        child: Text(_sortLabel(k)),
-                      ),
-                    )
+                    value: k,
+                    child: Text(_sortLabel(k)),
+                  ),
+                )
                     .toList(),
                 onChanged: (value) {
                   if (value != null) {
@@ -201,14 +239,14 @@ class AdminSubmissionsSortBar extends StatelessWidget {
         ),
         const SizedBox(height: 8),
 
-        // ---------- Filters title ----------
+        // Filters title
         const Text(
           'Filters (optional)',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
         ),
         const SizedBox(height: 4),
 
-        // ---------- Row 1: Category + Status ----------
+        // Row 1: Category + Status
         Row(
           children: [
             Expanded(
@@ -220,10 +258,13 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                 items: ServiceCategories.values
                     .map(
                       (c) => DropdownMenuItem<ServiceCategories>(
-                        value: c,
-                        child: Text(c.label, overflow: TextOverflow.ellipsis),
-                      ),
-                    )
+                    value: c,
+                    child: Text(
+                      c.label,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
                     .toList(),
                 onChanged: (value) {
                   onFilterChanged(
@@ -246,10 +287,13 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                   items: FeedbackStatusCategories.values
                       .map(
                         (s) => DropdownMenuItem<FeedbackStatusCategories>(
-                          value: s,
-                          child: Text(s.label, overflow: TextOverflow.ellipsis),
-                        ),
-                      )
+                      value: s,
+                      child: Text(
+                        s.label,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
                       .toList(),
                   onChanged: (value) {
                     onFilterChanged(
@@ -266,7 +310,7 @@ class AdminSubmissionsSortBar extends StatelessWidget {
         ),
         const SizedBox(height: 8),
 
-        // ---------- Row 2: Rating + Urgency ----------
+        // Row 2: Rating + Urgency
         Row(
           children: [
             Expanded(
@@ -278,10 +322,10 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                 items: List.generate(5, (i) => i + 1)
                     .map(
                       (r) => DropdownMenuItem<int>(
-                        value: r,
-                        child: Text(r.toString()),
-                      ),
-                    )
+                    value: r,
+                    child: Text(r.toString()),
+                  ),
+                )
                     .toList(),
                 onChanged: (value) {
                   onFilterChanged(
@@ -301,10 +345,10 @@ class AdminSubmissionsSortBar extends StatelessWidget {
                   items: List.generate(5, (i) => i + 1)
                       .map(
                         (u) => DropdownMenuItem<int>(
-                          value: u,
-                          child: Text(u.toString()),
-                        ),
-                      )
+                      value: u,
+                      child: Text(u.toString()),
+                    ),
+                  )
                       .toList(),
                   onChanged: (value) {
                     onFilterChanged(
@@ -320,7 +364,7 @@ class AdminSubmissionsSortBar extends StatelessWidget {
           ],
         ),
 
-        // ---------- Clear filters ----------
+        // Clear filters
         if (!filter.isEmpty) ...[
           const SizedBox(height: 4),
           Align(

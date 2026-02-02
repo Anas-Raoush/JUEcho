@@ -1,84 +1,81 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:juecho/features/auth/presentation/provider/auth_provider.dart';
-import 'package:juecho/features/feedback/data/feedback_repository.dart';
+import 'package:juecho/features/feedback/data/repositories/graphql_subscriptions_repository.dart';
+import 'package:juecho/features/feedback/data/repositories/general_repositories/general_submissions_repository.dart';
 import 'package:juecho/features/home/data/home_repository.dart';
 
-/// ============================================================================
-/// GENERAL HOME STATS PROVIDER
-/// ============================================================================
+/// GeneralHomeStatsProvider
 ///
-/// Purpose:
-/// - Holds and refreshes the GENERAL user's dashboard statistics.
+/// State holder for GENERAL dashboard statistics.
 ///
-/// Loads:
-/// - [HomeRepository.fetchGeneralDashboardStats]
+/// Responsibilities:
+/// - Load stats (HomeRepository.fetchGeneralDashboardStats)
+/// - Refresh stats on demand
+/// - Keep stats consistent using realtime subscription pings
 ///
-/// Realtime strategy:
-/// - We listen to **ID-only** subscriptions:
-///   - onCreateSubmission { id }
-///   - onUpdateSubmission { id }
+/// Realtime design:
+/// - Uses ID-only subscriptions to reduce payload and parsing overhead:
+///   -> onCreateSubmission { id }
+///   -> onUpdateSubmission { id }
 ///
-/// How we filter events to "my" user:
-/// - Subscription gives `id`
-/// - We fetch the submission once by `id`
-/// - If ownerId matches current userId => refresh stats
+/// Ownership filtering:
+/// - Subscription events are global; to decide if the current user's stats should update:
+///   -> fetch submission by id
+///   -> compare ownerId with AuthProvider.profile.userId
+///   -> refresh stats only when it matches
 class GeneralHomeStatsProvider extends ChangeNotifier {
   GeneralHomeStatsProvider(AuthProvider auth) : _auth = auth;
 
-  /// Auth provider reference (not final because ProxyProvider can update it).
   AuthProvider _auth;
 
-  /// Last loaded stats, null until loaded.
   GeneralDashboardStats? stats;
-
-  /// Loading flag for UI.
   bool isLoading = false;
-
-  /// Error message for UI, null when no error.
   String? error;
 
-  /// Stream subscriptions: we only subscribe to IDs.
   StreamSubscription<String>? _subCreatedId;
   StreamSubscription<String>? _subUpdatedId;
 
-  /// Called by ProxyProvider.update(...) to refresh auth reference.
+  /// Updates the internal auth reference (used by ProxyProvider).
+  ///
+  /// Side effect:
+  /// - If profile becomes available and stats have not been loaded, load once.
   void updateAuth(AuthProvider auth) {
     _auth = auth;
 
-    // If profile becomes ready and we haven't loaded yet, load once.
     if (_auth.profile != null && stats == null && !isLoading) {
       load();
     }
   }
 
-  /// Initializes provider:
-  /// - Loads stats once.
-  /// - Listens to realtime create/update (id-only) events.
+  /// Initializes the provider and establishes realtime listeners.
+  ///
+  /// This should be called once by the consumer page.
   Future<void> init() async {
     await load();
 
-    // Avoid duplicate listeners.
     await _subCreatedId?.cancel();
     await _subUpdatedId?.cancel();
 
-    _subCreatedId = FeedbackRepository.onSubmissionCreatedId().listen(
-      _handlePingById,
-      onError: (e) => debugPrint('General created subscription error: $e'),
-    );
+    _subCreatedId =
+        GraphQLSubscriptionsRepository.onSubmissionCreatedId().listen(
+          _handlePingById,
+          onError: (e) => debugPrint('General created subscription error: $e'),
+        );
 
-    _subUpdatedId = FeedbackRepository.onSubmissionUpdatedId().listen(
-      _handlePingById,
-      onError: (e) => debugPrint('General updated subscription error: $e'),
-    );
+    _subUpdatedId =
+        GraphQLSubscriptionsRepository.onSubmissionUpdatedId().listen(
+          _handlePingById,
+          onError: (e) => debugPrint('General updated subscription error: $e'),
+        );
   }
 
-  /// Handles subscription ping (submission id).
+  /// Processes an ID-only subscription event.
   ///
   /// Steps:
-  /// 1) If auth not ready -> ignore.
-  /// 2) Fetch full submission by id.
-  /// 3) If ownerId matches this user -> refresh stats.
+  /// 1) If auth/profile not ready -> ignore
+  /// 2) Fetch submission by id
+  /// 3) If submission.ownerId matches current userId -> reload stats
   Future<void> _handlePingById(String id) async {
     if (isLoading) return;
 
@@ -86,19 +83,19 @@ class GeneralHomeStatsProvider extends ChangeNotifier {
     if (profile == null) return;
 
     try {
-      final s = await FeedbackRepository.fetchSubmissionById(id);
+      final s = await GeneralSubmissionsRepository.fetchSubmissionById(id);
       if (s.ownerId == profile.userId) {
         await load();
       }
     } catch (e) {
-      // Realtime should not break the UI.
       debugPrint('General ping fetch failed for $id: $e');
     }
   }
 
-  /// Loads stats for the signed-in user.
+  /// Loads statistics for the current signed-in user.
   ///
-  /// If profile is null (bootstrap not finished), we skip silently.
+  /// If profile is not available yet:
+  /// - clears error/loading and returns without failing
   Future<void> load() async {
     final profile = _auth.profile;
 
@@ -123,7 +120,7 @@ class GeneralHomeStatsProvider extends ChangeNotifier {
     }
   }
 
-  /// Manual refresh (pull-to-refresh).
+  /// Manual refresh entry point (pull-to-refresh / after an action).
   Future<void> refresh() async {
     if (isLoading) return;
     await load();
@@ -137,22 +134,22 @@ class GeneralHomeStatsProvider extends ChangeNotifier {
   }
 }
 
-/// ============================================================================
-/// ADMIN HOME STATS PROVIDER
-/// ============================================================================
+/// AdminHomeStatsProvider
 ///
-/// Purpose:
-/// - Holds and refreshes ADMIN dashboard statistics.
+/// State holder for ADMIN dashboard statistics.
 ///
-/// Loads:
-/// - [HomeRepository.fetchAdminDashboardStats]
+/// Responsibilities:
+/// - Load stats (HomeRepository.fetchAdminDashboardStats)
+/// - Refresh stats using realtime submission events
 ///
-/// Realtime strategy:
-/// - Listens to id-only create/update/delete events.
-/// - Any event triggers a refresh.
+/// Realtime design:
+/// - Uses ID-only subscriptions for create/update/delete:
+///   -> onCreateSubmission { id }
+///   -> onUpdateSubmission { id }
+///   -> onDeleteSubmission { id }
 ///
-/// Note:
-/// - `_didInit` prevents multiple subscriptions when navigating between pages.
+/// Refresh strategy:
+/// - Any event triggers a refresh if the provider is idle (not currently loading)
 class AdminHomeStatsProvider extends ChangeNotifier {
   AdminDashboardStats? stats;
   bool isLoading = false;
@@ -164,6 +161,7 @@ class AdminHomeStatsProvider extends ChangeNotifier {
 
   bool _didInit = false;
 
+  /// Initializes the provider exactly once to avoid duplicate listeners.
   Future<void> init() async {
     if (_didInit) return;
     _didInit = true;
@@ -174,26 +172,30 @@ class AdminHomeStatsProvider extends ChangeNotifier {
     await _subUpdatedId?.cancel();
     await _subDeletedId?.cancel();
 
-    _subCreatedId = FeedbackRepository.onSubmissionCreatedId().listen(
-          (_) => _refreshIfIdle(),
-      onError: (e) => debugPrint('Admin created subscription error: $e'),
-    );
+    _subCreatedId =
+        GraphQLSubscriptionsRepository.onSubmissionCreatedId().listen(
+              (_) => _refreshIfIdle(),
+          onError: (e) => debugPrint('Admin created subscription error: $e'),
+        );
 
-    _subUpdatedId = FeedbackRepository.onSubmissionUpdatedId().listen(
-          (_) => _refreshIfIdle(),
-      onError: (e) => debugPrint('Admin updated subscription error: $e'),
-    );
+    _subUpdatedId =
+        GraphQLSubscriptionsRepository.onSubmissionUpdatedId().listen(
+              (_) => _refreshIfIdle(),
+          onError: (e) => debugPrint('Admin updated subscription error: $e'),
+        );
 
-    _subDeletedId = FeedbackRepository.onSubmissionDeletedId().listen(
-          (_) => _refreshIfIdle(),
-      onError: (e) => debugPrint('Admin deleted subscription error: $e'),
-    );
+    _subDeletedId =
+        GraphQLSubscriptionsRepository.onSubmissionDeletedId().listen(
+              (_) => _refreshIfIdle(),
+          onError: (e) => debugPrint('Admin deleted subscription error: $e'),
+        );
   }
 
   void _refreshIfIdle() {
     if (!isLoading) load();
   }
 
+  /// Loads admin dashboard statistics.
   Future<void> load() async {
     isLoading = true;
     error = null;

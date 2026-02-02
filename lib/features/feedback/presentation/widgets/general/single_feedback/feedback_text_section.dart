@@ -1,10 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:juecho/common/constants/app_colors.dart';
 
+/// Text editing section for a feedback submission.
+///
+/// Fields:
+/// - Title
+/// - Description
+/// - Suggestion
+///
+/// Edit mode:
+/// - When [canEdit] is false, fields are rendered read-only.
+/// - When [canEdit] is true, controllers remain editable and changes are
+///   consumed by the parent widget/provider on save.
 class FeedbackTextSection extends StatelessWidget {
+  /// Controller for the title field.
   final TextEditingController titleController;
+
+  /// Controller for the description field.
   final TextEditingController descriptionController;
+
+  /// Controller for the suggestion field.
   final TextEditingController suggestionController;
+
+  /// Controls whether fields are editable.
   final bool canEdit;
 
   const FeedbackTextSection({
@@ -31,7 +49,7 @@ class FeedbackTextSection extends StatelessWidget {
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.primary),
+              borderSide: const BorderSide(color: AppColors.primary),
             ),
             isDense: true,
           ),
@@ -50,7 +68,7 @@ class FeedbackTextSection extends StatelessWidget {
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.primary),
+              borderSide: const BorderSide(color: AppColors.primary),
             ),
           ),
         ),
@@ -68,7 +86,7 @@ class FeedbackTextSection extends StatelessWidget {
           decoration: InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.primary),
+              borderSide: const BorderSide(color: AppColors.primary),
             ),
           ),
         ),

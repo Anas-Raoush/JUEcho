@@ -1,6 +1,10 @@
 import 'package:juecho/common/constants/feedback_status_categories.dart';
 import 'package:juecho/common/constants/service_categories.dart';
 
+// Data models for the feedback feature:
+// - FeedbackReply: chat-style message inside a submission
+// - FeedbackSubmission: the core submission model used across the app
+
 /// One chat-style reply in the submission's conversation.
 class FeedbackReply {
   final String fromRole; // "GENERAL" or "ADMIN"
@@ -40,7 +44,7 @@ class FeedbackReply {
 
 /// In-app representation of a feedback submission (Student → Admin).
 ///
-/// Mirrors the `Submission` model in `resources.ts`.
+/// Mirrors the GraphQL `Submission` model fields used in the app.
 class FeedbackSubmission {
   final String id;
   final String ownerId;
@@ -93,18 +97,26 @@ class FeedbackSubmission {
     return hasTitle && hasDescription;
   }
 
+  /// All admin replies sorted oldest → newest.
   List<FeedbackReply> get adminReplies {
-    final adminReplies = replies
-        .where((r) => r.fromRole.toUpperCase() == 'ADMIN')
-        .toList();
+    final adminReplies =
+    replies.where((r) => r.fromRole.toUpperCase() == 'ADMIN').toList();
 
     adminReplies.sort((a, b) => a.at.compareTo(b.at));
     return adminReplies;
   }
 
+  /// All user replies sorted oldest → newest.
+  List<FeedbackReply> get userReplies {
+    final userReplies =
+    replies.where((r) => r.fromRole.toUpperCase() == 'GENERAL').toList();
+
+    userReplies.sort((a, b) => a.at.compareTo(b.at));
+    return userReplies;
+  }
+
   /// True when the student is still allowed to edit/delete this submission.
-  bool get canEditOrDelete =>
-      status == FeedbackStatusCategories.submitted;
+  bool get canEditOrDelete => status == FeedbackStatusCategories.submitted;
 
   factory FeedbackSubmission.fromJson(Map<String, dynamic> json) {
     return FeedbackSubmission(
@@ -117,8 +129,7 @@ class FeedbackSubmission {
       suggestion: json['suggestion'] as String?,
       rating: json['rating'] as int,
       attachmentKey: json['attachmentKey'] as String?,
-      status:
-      FeedbackStatusParser.fromKey(json['status'] as String),
+      status: FeedbackStatusParser.fromKey(json['status'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'] as String)
@@ -155,16 +166,6 @@ class FeedbackSubmission {
       'createdAt': createdAt.toIso8601String(),
     };
   }
-  /// All user (GENERAL) replies, sorted oldest → newest.
-  List<FeedbackReply> get userReplies {
-    final userReplies = replies
-        .where((r) => r.fromRole.toUpperCase() == 'GENERAL')
-        .toList();
-
-    userReplies.sort((a, b) => a.at.compareTo(b.at));
-    return userReplies;
-  }
-
 
   /// Minimal user-editable update map for `UpdateSubmissionInput`.
   Map<String, dynamic> toUserUpdateInput() {

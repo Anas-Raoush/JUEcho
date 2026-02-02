@@ -1,23 +1,21 @@
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:juecho/common/constants/feedback_status_categories.dart';
 import 'package:juecho/common/constants/service_categories.dart';
-import 'package:juecho/features/feedback/data/feedback_repository.dart';
+import 'package:juecho/features/feedback/data/repositories/admin_repositories/admin_submissions_repository.dart';
+import 'package:juecho/features/feedback/data/repositories/general_repositories/general_submissions_repository.dart';
 import 'package:juecho/features/profile/data/profile_repository.dart';
 
-/// Dashboard statistics model for GENERAL users.
+/// GeneralDashboardStats
 ///
-/// Used to summarize the current user's submissions:
-/// - [totalFullFeedback]  : count of full submissions (title/description/etc.)
-/// - [pendingReviews]     : full submissions that are still NOT resolved/rejected
-/// - [ratingOnlyCount]    : submissions that only contain a rating (no full feedback)
+/// Aggregate statistics for the GENERAL user dashboard.
+///
+/// Metrics:
+/// - totalFullFeedback: count of submissions considered "full feedback" (not rating-only)
+/// - pendingReviews: full submissions that are not yet in a terminal state
+/// - ratingOnlyCount: submissions containing only a rating (no full feedback content)
 class GeneralDashboardStats {
-  /// Full feedback submissions count (not rating-only).
   final int totalFullFeedback;
-
-  /// Full feedback submissions that are still being processed (not resolved/rejected).
   final int pendingReviews;
-
-  /// Rating-only submissions count.
   final int ratingOnlyCount;
 
   const GeneralDashboardStats({
@@ -27,26 +25,19 @@ class GeneralDashboardStats {
   });
 }
 
-/// Dashboard statistics model for ADMINS.
+/// AdminDashboardStats
 ///
-/// Used to summarize overall system status:
-/// - [submissionsReceived]      : number of full feedback submissions received
-/// - [resolvedIssues]           : number of full feedback submissions with status "resolved"
-/// - [topRatedServiceLabel]     : service label with the highest average rating (based on ratings submitted)
-/// - [bottomRatedServiceLabel]  : service label with the lowest average rating (based on ratings submitted)
+/// Aggregate statistics for the ADMIN dashboard.
+///
+/// Metrics:
+/// - submissionsReceived: count of full feedback submissions received by the system
+/// - resolvedIssues: count of full feedback submissions marked as resolved
+/// - topRatedServiceLabel: service label with the highest average rating (if rating data exists)
+/// - bottomRatedServiceLabel: service label with the lowest average rating (if rating data exists)
 class AdminDashboardStats {
-  /// Total received full feedback submissions (admin scope).
   final int submissionsReceived;
-
-  /// Full feedback submissions marked as resolved.
   final int resolvedIssues;
-
-  /// Label for the service with the highest average rating.
-  /// Null when there is not enough rating data.
   final String? topRatedServiceLabel;
-
-  /// Label for the service with the lowest average rating.
-  /// Null when there is not enough rating data.
   final String? bottomRatedServiceLabel;
 
   const AdminDashboardStats({
@@ -57,47 +48,40 @@ class AdminDashboardStats {
   });
 }
 
-/// Repository that computes dashboard statistics for home pages.
+/// HomeRepository
 ///
-/// Why this exists:
-/// - Keeps "dashboard calculations" out of UI widgets.
-/// - Reuses existing repository methods from [FeedbackRepository].
-/// - Encapsulates counting/filtering logic in one place.
+/// Read-only repository responsible for computing dashboard-level metrics.
 ///
-/// Notes:
-/// - General stats require a [ProfileData] because fetching "my submissions"
-///   is scoped by the user's ownerId/userId.
-/// - Admin stats do NOT require profile because admin sees all submissions.
+/// Rationale:
+/// - Keeps aggregation logic out of UI widgets and providers.
+/// - Reuses existing submission repositories for data retrieval.
+/// - Centralizes calculation rules so they remain consistent across the app.
+///
+/// Data sources:
+/// - General stats -> GeneralSubmissionsRepository.fetchMySubmissions(profile)
+/// - Admin stats   -> AdminSubmissionsRepository.fetchAllSubmissionsForAdmin()
 class HomeRepository {
-  /// Fetch statistics for the GENERAL user dashboard.
+  /// Computes GENERAL dashboard statistics for the current user.
   ///
-  /// Data source:
-  /// - Uses [FeedbackRepository.fetchMySubmissions] (requires [profile]).
+  /// Data:
+  /// - Pulls the user's submissions using the owner scope derived from profile.
   ///
-  /// Calculation rules:
-  /// - Full feedback = submissions where `s.isFullFeedback == true`
-  /// - Rating-only = total submissions - full feedback count
-  /// - Pending reviews = full feedback submissions that are NOT:
-  ///   - resolved
-  ///   - rejected
-  ///
-  /// Throws:
-  /// - rethrows any exception from data fetching so the provider/UI
-  ///   can show an error state.
+  /// Rules:
+  /// - Full feedback: s.isFullFeedback == true
+  /// - Rating-only  : total submissions - full feedback count
+  /// - Pending reviews: full feedback submissions not in terminal states:
+  ///   -> resolved
+  ///   -> rejected
   static Future<GeneralDashboardStats> fetchGeneralDashboardStats({
     required ProfileData profile,
   }) async {
     try {
-      // Fetch only the current user's submissions.
-      final submissions = await FeedbackRepository.fetchMySubmissions(
-        profile: profile,
-      );
+      final submissions =
+      await GeneralSubmissionsRepository.fetchMySubmissions(profile: profile);
 
-      // Separate "full feedback" from "rating-only".
       final full = submissions.where((s) => s.isFullFeedback).toList();
       final ratingOnly = submissions.length - full.length;
 
-      // Pending are full submissions that aren't resolved.
       final pending = full.where((s) {
         switch (s.status) {
           case FeedbackStatusCategories.resolved:
@@ -119,28 +103,23 @@ class HomeRepository {
     }
   }
 
-  /// Fetch statistics for the ADMIN dashboard.
+  /// Computes ADMIN dashboard statistics across the system.
   ///
-  /// Data source:
-  /// - Uses [FeedbackRepository.fetchAllSubmissionsForAdmin]
+  /// Data:
+  /// - Admin can read all submissions (not scoped by owner).
   ///
-  /// Calculation rules:
-  /// - "submissionsReceived" counts only FULL feedback submissions.
-  /// - "resolvedIssues" counts only FULL submissions with status resolved.
-  /// - Top/bottom rated services are computed using ALL submissions
-  ///   that have `rating > 0`, including rating-only submissions.
+  /// Rules:
+  /// - submissionsReceived: counts ONLY full feedback submissions
+  /// - resolvedIssues: counts ONLY full submissions in resolved status
+  /// - top/bottom rated service: computed from all submissions with rating > 0
   ///
-  /// If there are no submissions:
-  /// - returns zeros and null labels.
-  ///
-  /// Throws:
-  /// - rethrows any exception so the provider/UI can handle it.
+  /// Behavior:
+  /// - If no submissions exist -> return zeros and null labels
   static Future<AdminDashboardStats> fetchAdminDashboardStats() async {
     try {
-      // Admin can see all submissions.
-      final submissions = await FeedbackRepository.fetchAllSubmissionsForAdmin();
+      final submissions =
+      await AdminSubmissionsRepository.fetchAllSubmissionsForAdmin();
 
-      // No data: return default.
       if (submissions.isEmpty) {
         return const AdminDashboardStats(
           submissionsReceived: 0,
@@ -150,7 +129,6 @@ class HomeRepository {
         );
       }
 
-      // Only full feedback counts for total & resolved issues.
       final full = submissions.where((s) => s.isFullFeedback).toList();
 
       final total = full.length;
@@ -158,8 +136,6 @@ class HomeRepository {
           .where((s) => s.status == FeedbackStatusCategories.resolved)
           .length;
 
-      // Aggregate ratings per service category:
-      // sum of ratings + count of ratings, then compute average.
       final Map<ServiceCategories, _RatingAgg> ratingAgg = {};
 
       for (final s in submissions) {
@@ -177,7 +153,6 @@ class HomeRepository {
       String? topLabel;
       String? bottomLabel;
 
-      // Determine the highest/lowest average rating service.
       if (ratingAgg.isNotEmpty) {
         ServiceCategories? topCat;
         double? topAvg;
@@ -215,13 +190,13 @@ class HomeRepository {
   }
 }
 
-/// Internal helper class for rating aggregation.
+/// _RatingAgg
 ///
-/// Stores:
-/// - [sum]   : total of ratings for a given service
-/// - [count] : number of rating entries for a given service
+/// Internal accumulator used to compute average ratings per service category:
+/// - sum: total ratings
+/// - count: number of rating entries
 ///
-/// Used to compute average: `sum / count`.
+/// Average = sum / count
 class _RatingAgg {
   int sum;
   int count;

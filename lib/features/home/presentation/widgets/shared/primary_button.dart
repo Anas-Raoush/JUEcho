@@ -1,6 +1,19 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 
+/// PrimaryButton
+///
+/// Standard call-to-action button used across home pages.
+///
+/// Features:
+/// - Full-width, fixed-height layout for consistent UI.
+/// - Supports "outlined" mode to represent secondary actions.
+/// - Delegates press handling to the caller.
+///
+/// Notes:
+/// - Uses ElevatedButton styling for a consistent Material interaction model.
+/// - When outlined == true, background is still configurable but the border is forced.
 class PrimaryButton extends StatelessWidget {
   const PrimaryButton({
     super.key,
@@ -31,10 +44,7 @@ class PrimaryButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: outlined
-                ? const BorderSide(
-              color: AppColors.grayBorder,
-              width: 1,
-            )
+                ? const BorderSide(color: AppColors.grayBorder, width: 1)
                 : BorderSide.none,
           ),
           textStyle: const TextStyle(

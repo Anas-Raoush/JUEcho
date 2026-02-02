@@ -5,60 +5,49 @@ import 'package:flutter/foundation.dart';
 import 'package:juecho/features/auth/data/auth_repository.dart';
 import 'package:juecho/features/profile/data/profile_repository.dart';
 
-/// High-level auth state for the whole app.
-///
-/// - [unknown] : app just started and we haven't checked the session yet.
-/// - [signedOut]: user is not authenticated.
-/// - [signedIn] : user is authenticated (may be admin or general user).
+/// High-level authentication state for the application:
+/// - unknown  -> app just launched; session state has not been resolved yet
+/// - signedOut -> no authenticated session available
+/// - signedIn  -> authenticated session available (role determined separately)
 enum AuthStatus { unknown, signedOut, signedIn }
 
-/// Global authentication/state holder using Provider.
+/// AuthProvider
 ///
-/// This class is the single source of truth for:
-/// - whether the user is signed in or not
-/// - whether the user is admin
-/// - the cached user profile (ProfileData)
-/// - the last error message (if any)
+/// Global authentication state holder exposed via Provider.
 ///
-/// Typical usage:
-/// - SplashPage calls [bootstrap()] once at startup to restore session.
-/// - LoginPage calls [signIn()] and then navigates depending on [isAdmin].
-/// - ProfilePage can call [updateLocalNames] after a successful name update.
+/// Owns and exposes:
+/// - current authentication state (AuthStatus)
+/// - admin flag derived from Cognito groups claim
+/// - cached user ProfileData loaded once on bootstrap/sign-in
+/// - last error message for UI consumption
+///
+/// Intended usage:
+/// - SplashPage calls bootstrap() once to restore session and load profile.
+/// - LoginPage calls signIn() and routes based on isAdmin.
+/// - Any page can read profile/userId/fullName without refetching.
+///
+/// Design approach:
+/// - Keeps Amplify/AuthRepository calls out of UI widgets.
+/// - Caches profile to reduce repeated network calls.
+/// - Relies on exceptions for flow control in sign-in/confirmation flows.
 class AuthProvider extends ChangeNotifier {
   // ---------------- Private state ----------------
 
-  /// Current authentication status.
   AuthStatus _status = AuthStatus.unknown;
-
-  /// Whether the signed-in user is admin (derived from Cognito groups/claims).
   bool _isAdmin = false;
-
-  /// Cached profile loaded once after login/bootstrap.
-  /// This avoids re-fetching profile on every page.
   ProfileData? _profile;
-
-  /// Last error message to display in UI (optional).
   String? _error;
 
-  // ---------------- Getters (read-only public state) ----------------
+  // ---------------- Public getters ----------------
 
-  /// App auth status (unknown/signedOut/signedIn).
   AuthStatus get status => _status;
-
-  /// Convenience flag for signed-in check.
   bool get isSignedIn => _status == AuthStatus.signedIn;
-
-  /// Role flag (admin vs general).
   bool get isAdmin => _isAdmin;
-
-  /// Cached profile for current user.
   ProfileData? get profile => _profile;
-
-  /// Last stored error (if any).
   String? get error => _error;
 
-  /// Friendly display name used across UI.
-  /// Falls back to "User" if profile is not ready or name is empty.
+  /// Derived display name from cached profile.
+  /// Returns "User" when profile is missing or name is empty.
   String get fullName {
     final p = _profile;
     if (p == null) return 'User';
@@ -66,87 +55,66 @@ class AuthProvider extends ChangeNotifier {
     return name.isEmpty ? 'User' : name;
   }
 
-  /// Convenience getter (used often for API calls).
+  /// Convenience accessor for user identifier used by AppSync models.
   String? get userId => _profile?.userId;
 
-  // ---------------- Core lifecycle ----------------
+  // ---------------- Session bootstrap ----------------
 
-  /// Called once from SplashPage to restore a session and load profile.
+  /// Restores an existing Cognito session and caches the user's profile.
   ///
-  /// What it does:
-  /// 1) Fetch current Cognito session.
-  /// 2) If not signed in -> clear local state.
-  /// 3) If signed in -> determine admin role + load profile once.
+  /// Flow:
+  /// - fetch current Cognito session
+  /// - if not signed in:
+  ///   -> clear local state and mark signedOut
+  /// - if signed in:
+  ///   -> derive admin role from session claims
+  ///   -> mark signedIn
+  ///   -> load profile data once
+  ///   -> notify listeners
   ///
-  /// Notes:
-  /// - This method caches the profile in-memory (in this provider).
-  /// - Any UI listening to this provider will rebuild after [notifyListeners].
+  /// Failure handling:
+  /// - Any error results in signedOut state to keep routing safe.
   Future<void> bootstrap() async {
     _error = null;
 
     try {
-      // Ask Amplify (Cognito) for the current auth session.
-      final session = await Amplify.Auth.fetchAuthSession() as CognitoAuthSession;
+      final session =
+      await Amplify.Auth.fetchAuthSession() as CognitoAuthSession;
 
-      // If the session is not signed in, reset all local auth state.
       if (!session.isSignedIn) {
         _clearAuthState(signedIn: false);
         return;
       }
 
-      // Determine role (admin/general) from the session claims/groups.
       _isAdmin = AuthRepository.isAdminFromSession(session);
-
-      // Update state to signed in.
       _status = AuthStatus.signedIn;
 
-      // Load profile ONCE at app start and keep it cached.
       _profile = await AuthRepository.fetchCurrentProfileData();
 
-      // Notify UI that auth/profile state is ready.
       notifyListeners();
     } catch (e) {
       safePrint('bootstrap error: $e');
       _error = 'Could not restore session.';
-
-      // If anything fails, treat as signed out to keep routing safe.
       _clearAuthState(signedIn: false);
     }
   }
 
-  // ---------------- Auth actions ----------------
+  // ---------------- Authentication actions ----------------
 
-  /// Signs in the user using email and password.
+  /// Signs in the user and loads profile state.
   ///
-  /// Responsibilities:
-  /// - Perform authentication via [AuthRepository.signIn] (Cognito).
-  /// - Determine the user's role (admin or general).
-  /// - Load and cache the user's profile in memory.
-  /// - Update global authentication state.
-  /// - Map authentication errors to user-friendly messages.
+  /// Flow:
+  /// - AuthRepository.signIn(email, password) -> Cognito session
+  /// - derive isAdmin from session
+  /// - set signedIn status
+  /// - fetch and cache ProfileData
+  /// - notify listeners
   ///
-  /// Behavior:
-  /// - On success:
-  ///   - Sets auth status to signed in.
-  ///   - Determines admin role.
-  ///   - Loads user profile.
-  ///   - Notifies listeners.
-  /// - On [UserNotConfirmedException]:
-  ///   - Rethrows so the UI can handle confirmation flow.
-  /// - On [NetworkException]:
-  ///   - Rethrows so the UI can show a network error.
-  /// - On [AuthException]:
-  ///   - Maps Cognito error messages to readable UI messages.
-  ///   - Clears local auth state.
-  ///   - Rethrows for the UI to react.
-  /// - On any other error:
-  ///   - Clears local auth state.
-  ///   - Throws a generic sign-in failure.
-  ///
-  /// Notes:
-  /// - This method uses exceptions for flow control.
-  /// - UI must handle navigation and error presentation.
-  /// - This method does NOT perform navigation.
+  /// Error handling:
+  /// - UserNotConfirmedException -> rethrow for UI to route to confirmation screen
+  /// - NetworkException -> rethrow for UI to show network state
+  /// - AuthException -> map to user-facing message, clear local state, rethrow
+  /// - Other exceptions -> generic message, clear local state, rethrow
   Future<void> signIn({
     required String email,
     required String password,
@@ -154,29 +122,21 @@ class AuthProvider extends ChangeNotifier {
     _error = null;
 
     try {
-      // Perform sign-in using repository (Cognito).
-      final session = await AuthRepository.signIn(email: email, password: password);
+      final session =
+      await AuthRepository.signIn(email: email, password: password);
 
-      // Determine role (admin/general).
       _isAdmin = AuthRepository.isAdminFromSession(session);
-
-      // Mark state as signed in.
       _status = AuthStatus.signedIn;
 
-      // Load profile after login.
       _profile = await AuthRepository.fetchCurrentProfileData();
 
-      // Notify UI to rebuild.
       notifyListeners();
       return;
     } on UserNotConfirmedException {
-      // Let the caller handle this (navigate to confirmation flow).
       rethrow;
-    } on NetworkException{
-      // Let the caller handle this.
+    } on NetworkException {
       rethrow;
     } on AuthException catch (e) {
-      // Cognito/Auth-specific errors (wrong password, user not found, etc.).
       final msg = e.message.toLowerCase();
 
       if (msg.contains('incorrect username or password') ||
@@ -186,11 +146,11 @@ class AuthProvider extends ChangeNotifier {
           msg.contains('user not found')) {
         _error = 'Incorrect email or password. Please try again.';
       } else if (msg.contains('too many') && msg.contains('attempts')) {
-        _error =
-        'Too many failed attempts. Please wait a moment and try again.';
+        _error = 'Too many failed attempts. Please wait a moment and try again.';
       } else {
         _error = 'Sign in failed. Please try again later.';
       }
+
       notifyListeners();
       _clearAuthState(signedIn: false);
       rethrow;
@@ -203,10 +163,8 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Sign up a GENERAL user (not admin).
-  ///
-  /// This triggers Cognito sign-up and stores a confirmation code flow.
-  /// The UI should navigate the user to confirm the code after this.
+  /// Registers a new general user via AuthRepository.
+  /// The UI is responsible for routing to confirmation screen afterwards.
   Future<void> signUpGeneral({
     required String email,
     required String password,
@@ -229,12 +187,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Confirm sign-up using code, then create user profile.
+  /// Confirms email verification and creates the Users profile.
   ///
-  /// Typical flow:
-  /// 1) confirmSignUp(email, code)
-  /// 2) createProfileAfterConfirmation(...)
-  /// 3) clear local state (repo intentionally signs out after profile creation)
+  /// Expected UI flow:
+  /// - confirmSignUp(email, code)
+  /// - createProfileAfterConfirmation(email, password, firstName, lastName)
+  /// - provider clears state because repository signs out after profile creation
   Future<void> confirmAndCreateProfile({
     required String email,
     required String code,
@@ -254,7 +212,6 @@ class AuthProvider extends ChangeNotifier {
         lastName: lastName,
       );
 
-      // Repo flow: sign out after profile creation so user signs in normally.
       _clearAuthState(signedIn: false);
     } catch (e) {
       safePrint('confirmAndCreateProfile error: $e');
@@ -263,7 +220,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Resend the sign-up confirmation code.
+  /// Resends signup verification code through AuthRepository.
   Future<void> resendSignUpCode(String email) async {
     try {
       await AuthRepository.resendSignUpCode(email);
@@ -273,7 +230,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Start forgot password flow (sends reset code).
+  /// Starts forgot password flow (sends a reset code).
   Future<void> startForgotPassword(String email) async {
     try {
       await AuthRepository.startForgotPassword(email);
@@ -283,7 +240,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Confirm forgot password flow (code + new password).
+  /// Confirms forgot password (code + new password).
   Future<void> confirmForgotPassword({
     required String email,
     required String code,
@@ -301,7 +258,8 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Signs out from Cognito and clears all local cached auth/profile state.
+  /// Signs out and clears local state.
+  /// Local state is cleared even if remote sign out fails.
   Future<void> signOut() async {
     _error = null;
 
@@ -309,18 +267,15 @@ class AuthProvider extends ChangeNotifier {
       await AuthRepository.signOut();
     } catch (e) {
       safePrint('signOut error: $e');
-      // Even if sign out fails remotely, we still clear local state.
     } finally {
       _clearAuthState(signedIn: false);
     }
   }
 
-  // ---------------- Profile state helpers ----------------
+  // ---------------- Profile helpers ----------------
 
-  /// Updates the cached profile locally (in-memory) without re-fetching.
-  ///
-  /// Use this after a successful profile update (e.g., updateNames).
-  /// This keeps UI consistent instantly.
+  /// Updates cached profile name without refetching from backend.
+  /// Intended for immediate UI consistency after a profile update operation.
   void updateLocalNames({required String firstName, required String lastName}) {
     final p = _profile;
     if (p == null) return;
@@ -336,14 +291,15 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------------- Internal helpers ----------------
+  // ---------------- Internal state reset ----------------
 
-  /// Resets local auth state and notifies listeners.
+  /// Clears locally cached auth state.
   ///
-  /// If [signedIn] is false:
-  /// - clears profile
-  /// - clears admin flag
-  /// - sets status to signedOut
+  /// When signedIn is false:
+  /// - clears profile cache
+  /// - resets admin flag
+  /// - sets status signedOut
+  /// - notifies listeners
   void _clearAuthState({required bool signedIn}) {
     _profile = null;
     _isAdmin = false;

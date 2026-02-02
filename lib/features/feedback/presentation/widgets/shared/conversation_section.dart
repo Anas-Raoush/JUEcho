@@ -1,27 +1,46 @@
 import 'package:flutter/material.dart';
+
 import 'package:juecho/common/constants/app_colors.dart';
 import 'package:juecho/features/feedback/data/models/feedback_model.dart';
 
-/// Generic conversation section used by both GENERAL and ADMIN.
+/// Conversation timeline section used by both general and admin submission pages.
 ///
-/// - Shows a title
-/// - Shows a numbered list of messages (if any)
-/// - Optionally shows a reply input + send button
+/// Responsibilities
+/// - Renders a section [title].
+/// - Shows previous messages in a bordered container when available.
+/// - Shows a fallback text when there are no messages.
+/// - Optionally renders a reply input area and send button.
+///
+/// Reply mode
+/// - Enabled when [canReply] is true AND [controller] and [onSend] are not null.
+/// - Disables send action when [isSending] is true.
+/// - Allows customizing placeholder and button label via [inputHint] and [sendLabel].
 class ConversationSection extends StatelessWidget {
+  /// Section title displayed above the messages container.
   final String title;
+
+  /// Replies list rendered in order.
   final List<FeedbackReply> messages;
 
-  /// If true and [controller]/[onSend] are provided,
-  /// a reply input area + button will be shown.
+  /// Controls whether the input UI can be shown.
+  ///
+  /// Input UI is rendered only if this is true and both [controller] and [onSend]
+  /// are provided.
   final bool canReply;
 
-  /// Only used when [canReply] is true.
+  /// Controller used by the reply text field.
   final TextEditingController? controller;
+
+  /// True when sending is in progress.
   final bool isSending;
+
+  /// Callback invoked when the send button is pressed.
   final VoidCallback? onSend;
 
-  /// Optional UI strings for the input area.
+  /// Placeholder text for the reply input field.
   final String inputHint;
+
+  /// Label for the send button.
   final String sendLabel;
 
   const ConversationSection({
@@ -68,8 +87,7 @@ class ConversationSection extends StatelessWidget {
                     '${i + 1}) ${messages[i].message}',
                     style: const TextStyle(fontSize: 14),
                   ),
-                  if (i != messages.length - 1)
-                    const SizedBox(height: 4),
+                  if (i != messages.length - 1) const SizedBox(height: 4),
                 ],
               ],
             ),
@@ -83,7 +101,7 @@ class ConversationSection extends StatelessWidget {
           const SizedBox(height: 8),
         ],
 
-        // Reply input area (only when canReply + controller + onSend are provided)
+        // Reply input area
         if (canReply && controller != null && onSend != null) ...[
           TextField(
             controller: controller,
@@ -91,7 +109,7 @@ class ConversationSection extends StatelessWidget {
             decoration: InputDecoration(
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.primary),
+                borderSide: const BorderSide(color: AppColors.primary),
               ),
               hintText: inputHint,
             ),

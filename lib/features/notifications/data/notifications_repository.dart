@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:juecho/common/constants/feedback_status_categories.dart';
 import 'package:juecho/common/constants/notification_types.dart';
@@ -7,9 +8,22 @@ import 'package:juecho/features/auth/data/auth_repository.dart';
 import 'package:juecho/features/feedback/data/models/feedback_model.dart';
 import 'package:juecho/features/notifications/data/notification_model.dart';
 
+/// Data access layer for notifications.
+///
+/// Responsibilities
+/// - Fetch notifications for a recipient id.
+/// - Fetch notifications for the current signed-in user.
+/// - Mark a notification as read.
+/// - Provide helper methods used by feedback workflows to create notifications
+///   (status change and replies).
+///
+/// Backend
+/// - Uses Amplify GraphQL API (queries + mutations).
+/// - Sorting is performed client-side by [createdAt] descending.
 class NotificationsRepository {
   // ---------- GraphQL ops ----------
 
+  /// Creates a notification record.
   static const String _createNotificationMutation = r'''
   mutation CreateNotification($input: CreateNotificationInput!) {
     createNotification(input: $input) {
@@ -18,6 +32,7 @@ class NotificationsRepository {
   }
   ''';
 
+  /// Marks a notification as read.
   static const String _markReadMutation = r'''
   mutation UpdateNotification($input: UpdateNotificationInput!) {
     updateNotification(input: $input) {
@@ -27,8 +42,8 @@ class NotificationsRepository {
     }
   }
   ''';
-// inside NotificationsRepository
 
+  /// Lists notifications for a recipient id using a filter.
   static const String _listNotificationsQuery = r'''
   query ListNotifications($recipientId: ID) {
     listNotifications(
@@ -49,7 +64,10 @@ class NotificationsRepository {
   }
   ''';
 
-  // fetch by recipient id (doesn't touch AuthRepository at all)
+  /// Fetch notifications for a specific [recipientId].
+  ///
+  /// - Does not depend on AuthRepository or AuthProvider.
+  /// - Returns notifications sorted by newest first.
   static Future<List<AppNotification>> fetchNotificationsForUser(
       String recipientId,
       ) async {
@@ -80,6 +98,11 @@ class NotificationsRepository {
     return notifications;
   }
 
+  /// Fetch notifications for the currently signed-in user.
+  ///
+  /// Notes
+  /// - Uses [AuthRepository.fetchCurrentProfileData] to obtain the current user id.
+  /// - Returns notifications sorted by newest first.
   static Future<List<AppNotification>> fetchMyNotifications() async {
     final profile = await AuthRepository.fetchCurrentProfileData();
 
@@ -110,6 +133,9 @@ class NotificationsRepository {
     return notifications;
   }
 
+  /// Mark a notification as read.
+  ///
+  /// This is a best-effort call. Errors are logged but not thrown.
   static Future<void> markAsRead(String id) async {
     final input = <String, dynamic>{
       'id': id,
@@ -128,9 +154,11 @@ class NotificationsRepository {
     }
   }
 
-  // ---- Trigger helpers (called from FeedbackRepository) ----
+  // ---------- Trigger helpers (called from feedback workflows) ----------
 
-  /// When admin changes status.
+  /// Create a notification when an admin changes the submission status.
+  ///
+  /// No-op if [previous.status] equals [updated.status].
   static Future<void> createStatusChangedNotification({
     required FeedbackSubmission previous,
     required FeedbackSubmission updated,
@@ -150,7 +178,9 @@ class NotificationsRepository {
     );
   }
 
-  /// When admin replies – user should see it.
+  /// Create a notification when an admin adds a reply.
+  ///
+  /// The notification is created for the submission owner.
   static Future<void> createNewAdminReplyNotification({
     required FeedbackSubmission submission,
     required String replyText,
@@ -166,15 +196,17 @@ class NotificationsRepository {
     );
   }
 
-  /// When user replies – admin should see it.
+  /// Create a notification when a user adds a reply.
   ///
-  /// We notify the last admin who updated this submission (updatedById).
+  /// Notes
+  /// - Notifies the last admin who updated the submission ([updatedById]).
+  /// - If no admin is associated yet, this is a no-op.
   static Future<void> createNewUserReplyNotification({
     required FeedbackSubmission submission,
     required String replyText,
   }) async {
     final adminId = submission.updatedById;
-    if (adminId == null) return; // no admin "owner" yet
+    if (adminId == null) return;
 
     final preview = _makePreview(replyText);
     final subject = submission.title?.isNotEmpty == true
@@ -192,6 +224,9 @@ class NotificationsRepository {
 
   // ---------- Internal helpers ----------
 
+  /// Creates a notification record via GraphQL mutation.
+  ///
+  /// Errors are logged but not thrown to avoid breaking the calling workflow.
   static Future<void> _create({
     required String recipientId,
     String? submissionId,
@@ -206,6 +241,7 @@ class NotificationsRepository {
       'body': body,
       'isRead': false,
     };
+
     if (submissionId != null) {
       input['submissionId'] = submissionId;
     }
@@ -221,6 +257,10 @@ class NotificationsRepository {
     }
   }
 
+  /// Converts an arbitrary reply body into a compact preview string.
+  ///
+  /// The preview length is capped at 80 characters to keep notification cards
+  /// stable in height across devices.
   static String _makePreview(String text) {
     final trimmed = text.trim();
     if (trimmed.length <= 80) return trimmed;
